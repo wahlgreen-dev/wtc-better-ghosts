@@ -18,6 +18,13 @@ public static class VehicleSetups
 {
     static readonly Dictionary<string, VehicleSetup> byVehicleName = new();
 
+    static VehicleSetups()
+    {
+        Add(new VehicleSetup("Car with giraffe wheels Variant",
+            "Rigidbody/Visuals/Components/Lamppost wheel",
+            "Rigidbody/Visuals/Components/Lamppost wheel (2)"));
+    }
+
     public static VehicleSetup Find(string vehicleObjectName)
     {
         return byVehicleName.TryGetValue(NormalizeName(vehicleObjectName), out var setup) ? setup : null;
