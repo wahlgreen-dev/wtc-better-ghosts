@@ -16,7 +16,7 @@ public class BetterGhostsMod : MelonMod
     public override void OnInitializeMelon()
     {
         Instance = this;
-        Session = new LevelSession();
+        Session = new LevelSession(LoggerInstance);
     }
 
     public void OnGameplayStarted()
