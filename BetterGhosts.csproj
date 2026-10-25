@@ -1,0 +1,103 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AssemblyName>BetterGhosts</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GameDir)' == ''">
+    <GameDir>$(WTC_GAME_DIR)</GameDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GameDir)' == '' And '$(OS)' == 'Windows_NT'">
+    <_SteamHklm>$(registry:HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Valve\Steam@InstallPath)</_SteamHklm>
+    <_SteamHkcu>$(registry:HKEY_CURRENT_USER\SOFTWARE\Valve\Steam@SteamPath)</_SteamHkcu>
+
+    <_SteamRoot Condition="'$(_SteamHklm)' != '' And Exists('$(_SteamHklm)\steamapps\libraryfolders.vdf')">$(_SteamHklm)</_SteamRoot>
+    <_SteamRoot Condition="'$(_SteamRoot)' == '' And '$(_SteamHkcu)' != '' And Exists('$(_SteamHkcu)\steamapps\libraryfolders.vdf')">$(_SteamHkcu)</_SteamRoot>
+    <_SteamRoot Condition="'$(_SteamRoot)' == '' And Exists('C:\Program Files (x86)\Steam\steamapps\libraryfolders.vdf')">C:\Program Files (x86)\Steam</_SteamRoot>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GameDir)' == '' And '$(_SteamRoot)' != ''">
+    <_SteamAppId>2727650</_SteamAppId>
+    <_SteamVdf>$([System.IO.File]::ReadAllText('$(_SteamRoot)\steamapps\libraryfolders.vdf'))</_SteamVdf>
+    <_SteamLib>$([System.Text.RegularExpressions.Regex]::Match($(_SteamVdf), '(?s)"path"\s+"([^"]*)"(?:(?!"path").)*?"$(_SteamAppId)"').Groups[1].Value)</_SteamLib>
+    <_SteamGame Condition="'$(_SteamLib)' != ''">$([System.IO.Path]::GetFullPath('$(_SteamLib)\steamapps\common\WHAT THE CAR'))</_SteamGame>
+
+    <GameDir Condition="'$(_SteamGame)' != '' And Exists('$(_SteamGame)\GameAssembly.dll')">$(_SteamGame)</GameDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(GameDir)' == '' And '$(_SteamRoot)' != ''">
+    <_SteamFallback>$(_SteamRoot)\steamapps\common\WHAT THE CAR</_SteamFallback>
+    <GameDir Condition="Exists('$(_SteamFallback)\GameAssembly.dll')">$(_SteamFallback)</GameDir>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <MlNet6>$(GameDir)\MelonLoader\net6</MlNet6>
+    <Il2CppAsm>$(GameDir)\MelonLoader\Il2CppAssemblies</Il2CppAsm>
+  </PropertyGroup>
+
+  <Target Name="CheckGameSetup" BeforeTargets="ResolveAssemblyReferences">
+    <Error
+      Condition="'$(GameDir)' == ''"
+      Text="Could not find WHAT THE CAR. Set GameDir or WTC_GAME_DIR." />
+
+    <Error
+      Condition="!Exists('$(GameDir)\GameAssembly.dll')"
+      Text="No GameAssembly.dll in '$(GameDir)'." />
+
+    <Error
+      Condition="!Exists('$(MlNet6)\MelonLoader.dll')"
+      Text="MelonLoader not installed in '$(GameDir)'." />
+
+    <ItemGroup>
+      <_Il2CppProbe Include="$(Il2CppAsm)\*.dll" />
+    </ItemGroup>
+
+    <Error
+      Condition="'@(_Il2CppProbe)' == ''"
+      Text="No Il2Cpp assemblies in '$(Il2CppAsm)'. Run the game once." />
+  </Target>
+
+  <ItemGroup>
+    <Reference Include="MelonLoader">
+      <HintPath>$(MlNet6)\MelonLoader.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>$(MlNet6)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Il2CppInterop.Runtime">
+      <HintPath>$(MlNet6)\Il2CppInterop.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="$(Il2CppAsm)\*.dll" Condition="Exists('$(Il2CppAsm)')">
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="DeployToGame" AfterTargets="Build">
+    <Warning
+      Condition="!Exists('$(GameDir)\Mods')"
+      Text="No Mods folder in '$(GameDir)', not deployed." />
+
+    <Copy
+      Condition="Exists('$(GameDir)\Mods')"
+      SourceFiles="$(TargetPath)"
+      DestinationFolder="$(GameDir)\Mods"
+      ContinueOnError="WarnAndContinue" />
+
+    <Message
+      Condition="Exists('$(GameDir)\Mods')"
+      Importance="high"
+      Text="Deployed $(TargetFileName) -> $(GameDir)\Mods" />
+  </Target>
+
+</Project>
