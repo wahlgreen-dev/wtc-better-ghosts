@@ -16,6 +16,14 @@ public static class TransformPaths
         return current;
     }
 
+    public static string RelativePath(Transform transform, Transform root)
+    {
+        string path = transform.name;
+        for (Transform t = transform.parent; t != root; t = t.parent)
+            path = t.name + "/" + path;
+        return path;
+    }
+
     public static Transform FindDescendant(Transform root, string name)
     {
         for (int i = 0; i < root.childCount; i++)

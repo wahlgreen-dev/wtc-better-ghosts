@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Il2Cpp;
 using Il2CppSpeed.GhostCar;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace BetterGhosts;
 
@@ -19,6 +20,7 @@ public class ShapedGhost
     private readonly GameObject physicsContainer;
     private readonly PowerEffects power = new();
     private readonly LegAnimation legAnimation;
+    private readonly UmbrellaAnimation umbrella;
     private readonly List<float> bodyTimes = new();
     private readonly List<Vector3> bodyPositions = new();
     private readonly List<Quaternion> bodyRotations = new();
@@ -41,7 +43,7 @@ public class ShapedGhost
         if (recording != null && recording.SampleCount == bodyTimes.Count)
             this.parts = recording;
 
-        root = new GameObject("BetterGhost");
+        root = new("BetterGhost");
         root.layer = layer;
         root.transform.SetParent(modelTransform.parent, false);
         root.transform.localScale = body.lossyScale;
@@ -56,15 +58,17 @@ public class ShapedGhost
 
         if (setup.PhysicsRig != null)
         {
-            physicsContainer = new GameObject("BetterGhostPhysics");
+            physicsContainer = new("BetterGhostPhysics");
             physicsContainer.layer = layer;
             root.transform.SetPositionAndRotation(bodyPositions[0], bodyRotations[0]);
         }
 
         if (rigRoot != null)
-            rig = new CopiedRig(rigRoot, body, root.transform, palette, power, physicsContainer != null ? physicsContainer.transform : null);
+            rig = new(rigRoot, body, root.transform, palette, power, physicsContainer != null ? physicsContainer.transform : null);
         if (setup.LegAnimator != null)
-            legAnimation = new LegAnimation(vehicle, setup.LegAnimator);
+            legAnimation = new(vehicle, setup.LegAnimator);
+        if (rigRoot != null)
+            umbrella = UmbrellaAnimation.Find(vehicle, rigRoot, rig);
 
         genericModel = modelTransform.gameObject;
         genericModel.SetActive(false);
@@ -82,10 +86,13 @@ public class ShapedGhost
         if (parts != null)
             UpdateParts(from, to, blend);
 
+        bool pressed = blend < 0.5f ? actionPressed[from] : actionPressed[to];
+        umbrella?.Update(pressed, deltaTime);
+
         if (rig != null)
             UpdateRig(from, to, blend, deltaTime);
 
-        power.SetActive(blend < 0.5f ? actionPressed[from] : actionPressed[to]);
+        power.SetActive(pressed);
     }
 
     public void Destroy()
@@ -170,7 +177,7 @@ public class ShapedGhost
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
-            if (!renderer.enabled || renderer.GetComponent<Billboard>() != null)
+            if (!renderer.enabled || renderer.shadowCastingMode == ShadowCastingMode.ShadowsOnly || renderer.GetComponent<Billboard>() != null)
                 continue;
             if (rigRoot != null && renderer.transform.IsChildOf(rigRoot))
                 continue;

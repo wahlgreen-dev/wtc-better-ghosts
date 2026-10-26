@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
+using UnityEngine.Rendering;
 using Vector2List = Il2CppSystem.Collections.Generic.List<UnityEngine.Vector2>;
 
 namespace BetterGhosts;
@@ -22,6 +23,8 @@ public class CopiedRig
 
     public Animator Animator { get; }
 
+    public Transform Root { get; }
+
     public CopiedRig(Transform source, Transform body, Transform parent, GhostPalette palette, PowerEffects power, Transform physicsContainer)
     {
         this.power = power;
@@ -30,6 +33,7 @@ public class CopiedRig
         holder.SetActive(false);
         GameObject copy = Object.Instantiate(source.gameObject, holder.transform);
         copy.name = source.gameObject.name;
+        Root = copy.transform;
 
         power.AddFromCopy(copy, source.gameObject);
         RemoveBillboards(copy.transform);
@@ -162,7 +166,7 @@ public class CopiedRig
                 continue;
 
             MeshFilter filter = renderer.GetComponent<MeshFilter>();
-            if (filter == null || filter.sharedMesh == null)
+            if (filter == null || filter.sharedMesh == null || renderer.shadowCastingMode == ShadowCastingMode.ShadowsOnly)
             {
                 renderer.enabled = false;
                 continue;
@@ -181,8 +185,16 @@ public class CopiedRig
             SkinnedMeshRenderer skin = skinnedRenderers[i];
             bool wasEnabled = skin.enabled;
             skin.enabled = false;
-            if (!wasEnabled)
+            if (!wasEnabled || skin.shadowCastingMode == ShadowCastingMode.ShadowsOnly)
                 continue;
+
+            if (skin.bones.Length == 0)
+            {
+                palette.PaintWithoutSlots(skin, skin.sharedMesh.subMeshCount);
+                skin.updateWhenOffscreen = true;
+                skin.enabled = true;
+                continue;
+            }
 
             GameObject bakedObject = new GameObject(skin.gameObject.name + " (baked)");
             bakedObject.layer = skin.gameObject.layer;

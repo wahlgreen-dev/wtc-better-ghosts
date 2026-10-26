@@ -10,8 +10,11 @@ public class GhostPalette
 {
     public const int SlotChannel = 3;
     private const float GhostBodySlot = 34.09375f;
+    private const float GhostBodyPaletteEntry = 34f;
+    private const string PaletteOffsetProperty = "_ColorPaletteOffset";
 
     private readonly Material material;
+    private Material offsetMaterial;
     private readonly ShadowCastingMode shadowCastingMode;
     private readonly bool receiveShadows;
     private readonly Dictionary<int, Mesh> slotStreams = new();
@@ -26,17 +29,32 @@ public class GhostPalette
 
     public void Paint(Renderer renderer, int subMeshCount)
     {
+        Paint(renderer, subMeshCount, material);
+    }
+
+    public void PaintWithoutSlots(Renderer renderer, int subMeshCount)
+    {
+        if (offsetMaterial == null)
+        {
+            offsetMaterial = new Material(material);
+            offsetMaterial.SetFloat(PaletteOffsetProperty, GhostBodyPaletteEntry);
+        }
+        Paint(renderer, subMeshCount, offsetMaterial);
+    }
+
+    private void Paint(Renderer renderer, int subMeshCount, Material paint)
+    {
         renderer.shadowCastingMode = shadowCastingMode;
         renderer.receiveShadows = receiveShadows;
         if (subMeshCount <= 1)
         {
-            renderer.sharedMaterial = material;
+            renderer.sharedMaterial = paint;
             return;
         }
 
         Il2CppReferenceArray<Material> materials = new Il2CppReferenceArray<Material>(subMeshCount);
         for (int i = 0; i < subMeshCount; i++)
-            materials[i] = material;
+            materials[i] = paint;
         renderer.sharedMaterials = materials;
     }
 
@@ -71,5 +89,7 @@ public class GhostPalette
     {
         foreach (Mesh stream in slotStreams.Values)
             Object.Destroy(stream);
+        if (offsetMaterial != null)
+            Object.Destroy(offsetMaterial);
     }
 }
