@@ -21,6 +21,8 @@ public class LevelSession
     private GhostRecorder recorder;
     private ShapedGhost ghost;
     private bool ghostAttempted;
+    private bool warmedUp;
+    private bool gameplayStarted;
 
     public LevelSession(MelonLogger.Instance logger)
     {
@@ -29,7 +31,7 @@ public class LevelSession
 
     private static string RecordingFolder => Path.Combine(MelonEnvironment.UserDataDirectory, "BetterGhosts", "ghosts");
 
-    public void OnGameplayStarted(GhostCarManager manager)
+    public void OnLevelIntro(GhostCarManager manager)
     {
         EndRun();
         if (manager == null)
@@ -37,6 +39,19 @@ public class LevelSession
 
         this.manager = manager;
         StartRun();
+    }
+
+    public void OnGameplayStarted(GhostCarManager manager)
+    {
+        if (manager == null || manager != this.manager || setup == null)
+            OnLevelIntro(manager);
+        if (setup == null)
+            return;
+
+        gameplayStarted = true;
+        levelWon = false;
+        if (parts.Length > 0)
+            recorder = new GhostRecorder(manager, body, parts, setup);
     }
 
     public void OnLevelWon()
@@ -52,6 +67,13 @@ public class LevelSession
         if (manager == null)
         {
             EndRun();
+            return;
+        }
+
+        if (!gameplayStarted)
+        {
+            if (!warmedUp)
+                WarmUp();
             return;
         }
 
@@ -106,13 +128,24 @@ public class LevelSession
         }
 
         setup = foundSetup;
-        if (parts.Length > 0)
-            recorder = new GhostRecorder(manager, body, parts, setup);
+    }
+
+    private bool GhostDataReady => manager.ghostTransform != null && manager.existingGhostData != null;
+
+    private void WarmUp()
+    {
+        if (!GhostDataReady)
+            return;
+
+        warmedUp = true;
+        ShapedGhost warmUpGhost = new ShapedGhost(manager, vehicle, body, parts, setup, null);
+        warmUpGhost.Update(0f, 0f);
+        warmUpGhost.Destroy();
     }
 
     private void TryCreateGhost()
     {
-        if (manager.ghostTransform == null || manager.existingGhostData == null)
+        if (!GhostDataReady)
             return;
 
         ghostAttempted = true;
@@ -138,6 +171,8 @@ public class LevelSession
         ghost?.Destroy();
         ghost = null;
         ghostAttempted = false;
+        warmedUp = false;
+        gameplayStarted = false;
         recorder = null;
         setup = null;
         parts = null;

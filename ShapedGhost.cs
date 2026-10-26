@@ -170,7 +170,7 @@ public class ShapedGhost
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
-            if (!renderer.enabled || TransformPaths.HasComponentNamed(renderer.transform, "Billboard"))
+            if (!renderer.enabled || renderer.GetComponent<Billboard>() != null)
                 continue;
             if (rigRoot != null && renderer.transform.IsChildOf(rigRoot))
                 continue;
@@ -235,7 +235,7 @@ public class ShapedGhost
     {
         Mesh baked = new Mesh();
         skinned.BakeMesh(baked);
-        baked.SetUVs(GhostPalette.SlotChannel, GhostPalette.Slots(baked.vertexCount));
+        baked.SetUVs(GhostPalette.SlotChannel, palette.Slots(baked.vertexCount));
         bakedMeshes.Add(baked);
         return baked;
     }

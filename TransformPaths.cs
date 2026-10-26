@@ -31,17 +31,6 @@ public static class TransformPaths
         return null;
     }
 
-    public static bool HasComponentNamed(Transform transform, string typeName)
-    {
-        var components = transform.GetComponents<Component>();
-        for (int i = 0; i < components.Length; i++)
-        {
-            if (components[i] != null && components[i].GetIl2CppType().Name == typeName)
-                return true;
-        }
-        return false;
-    }
-
     private static Transform FindChild(Transform parent, string name)
     {
         for (int i = 0; i < parent.childCount; i++)

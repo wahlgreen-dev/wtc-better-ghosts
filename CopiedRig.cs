@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Il2Cpp;
 using UnityEngine;
 using Vector2List = Il2CppSystem.Collections.Generic.List<UnityEngine.Vector2>;
 
@@ -146,7 +147,7 @@ public class CopiedRig
         for (int i = 0; i < renderers.Length; i++)
         {
             Transform transform = renderers[i].transform;
-            if (!power.Keeps(transform) && TransformPaths.HasComponentNamed(transform, "Billboard"))
+            if (!power.Keeps(transform) && transform.GetComponent<Billboard>() != null)
                 Object.DestroyImmediate(renderers[i]);
         }
     }
@@ -192,7 +193,7 @@ public class CopiedRig
             bakedObject.AddComponent<MeshFilter>().sharedMesh = mesh;
             palette.Paint(bakedObject.AddComponent<MeshRenderer>(), skin.sharedMesh.subMeshCount);
 
-            skins.Add(new BakedSkin { Skin = skin, Mesh = mesh, PaletteSlots = GhostPalette.Slots(skin.sharedMesh.vertexCount) });
+            skins.Add(new BakedSkin { Skin = skin, Mesh = mesh, PaletteSlots = palette.Slots(skin.sharedMesh.vertexCount) });
         }
         BakeSkins();
     }

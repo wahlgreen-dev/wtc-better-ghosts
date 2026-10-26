@@ -3,6 +3,15 @@ using Il2CppSpeed.Level;
 
 namespace BetterGhosts;
 
+[HarmonyPatch(typeof(LevelIntroState), nameof(LevelIntroState.OnEnterState))]
+internal static class LevelIntroPatch
+{
+    private static void Postfix()
+    {
+        BetterGhostsMod.Instance.OnLevelIntro();
+    }
+}
+
 [HarmonyPatch(typeof(LevelGameplayState), nameof(LevelGameplayState.OnEnterState))]
 internal static class GameplayStartedPatch
 {

@@ -19,6 +19,11 @@ public class BetterGhostsMod : MelonMod
         Session = new LevelSession(LoggerInstance);
     }
 
+    public void OnLevelIntro()
+    {
+        Session.OnLevelIntro(Object.FindObjectOfType<GhostCarManager>());
+    }
+
     public void OnGameplayStarted()
     {
         Session.OnGameplayStarted(Object.FindObjectOfType<GhostCarManager>());

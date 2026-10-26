@@ -15,6 +15,7 @@ public class GhostPalette
     private readonly ShadowCastingMode shadowCastingMode;
     private readonly bool receiveShadows;
     private readonly Dictionary<int, Mesh> slotStreams = new();
+    private static readonly Dictionary<int, Vector2List> slotLists = new();
 
     public GhostPalette(Renderer ghostRenderer)
     {
@@ -53,12 +54,16 @@ public class GhostPalette
         return stream;
     }
 
-    public static Vector2List Slots(int vertexCount)
+    public Vector2List Slots(int vertexCount)
     {
-        Vector2List slots = new Vector2List(vertexCount);
+        if (slotLists.TryGetValue(vertexCount, out Vector2List slots))
+            return slots;
+
+        slots = new Vector2List(vertexCount);
         Vector2 slot = new Vector2(GhostBodySlot, 0f);
         for (int i = 0; i < vertexCount; i++)
             slots.Add(slot);
+        slotLists[vertexCount] = slots;
         return slots;
     }
 
