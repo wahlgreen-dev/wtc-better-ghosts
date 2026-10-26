@@ -11,6 +11,14 @@ public class VehicleSetup
     public readonly string[] PartPaths;
     public readonly Animator LegAnimator;
     public readonly Transform PhysicsRig;
+    public readonly bool RecordWheelSpin;
+
+    public VehicleSetup(string vehicleName, bool recordWheelSpin)
+    {
+        VehicleName = vehicleName;
+        PartPaths = Array.Empty<string>();
+        RecordWheelSpin = recordWheelSpin;
+    }
 
     public VehicleSetup(string vehicleName, params string[] partPaths)
     {
@@ -42,12 +50,14 @@ public static class VehicleSetups
     static VehicleSetups()
     {
         Add(new("Car with giraffe wheels Variant", "Rigidbody/Visuals/Components/Lamppost wheel", "Rigidbody/Visuals/Components/Lamppost wheel (2)"));
+        Add(new("Car with keyboards Variant", recordWheelSpin: true));
+        Add(new("Car with keyboards ASMR Variant", recordWheelSpin: true));
     }
 
     public static VehicleSetup Find(Transform vehicle)
     {
         string name = vehicle.name.Replace("(Clone)", "").Trim();
-        if (byVehicleName.TryGetValue(name, out VehicleSetup setup))
+        if (byVehicleName.TryGetValue(MatchKey(name), out VehicleSetup setup))
             return setup;
 
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
@@ -76,6 +86,15 @@ public static class VehicleSetups
 
     private static void Add(VehicleSetup setup)
     {
-        byVehicleName[setup.VehicleName] = setup;
+        byVehicleName[MatchKey(setup.VehicleName)] = setup;
+    }
+
+    private static string MatchKey(string vehicleName)
+    {
+        const string variantSuffix = " Variant";
+        if (!vehicleName.EndsWith(variantSuffix))
+            return vehicleName;
+
+        return vehicleName.Substring(0, vehicleName.Length - variantSuffix.Length).TrimEnd();
     }
 }

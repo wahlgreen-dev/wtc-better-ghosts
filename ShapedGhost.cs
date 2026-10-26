@@ -15,7 +15,11 @@ public class ShapedGhost
     private readonly GhostPalette palette;
     private readonly GameObject genericModel;
     private readonly Transform[] partPivots;
-    private readonly PartRecording parts;
+    private readonly List<Transform> anchorSources = new();
+    private readonly List<Transform> anchorPivots = new();
+    private readonly List<SpinningPart> spinners = new();
+    private readonly PartRecording recording;
+    private readonly List<(Transform pivot, int wheel)> wheelPivots = new();
     private readonly CopiedRig rig;
     private readonly GameObject physicsContainer;
     private readonly PowerEffects power = new();
@@ -41,7 +45,7 @@ public class ShapedGhost
         CacheSamples(manager.existingGhostData);
         bodyCursor = new SampleCursor(bodyTimes);
         if (recording != null && recording.SampleCount == bodyTimes.Count)
-            this.parts = recording;
+            this.recording = recording;
 
         root = new("BetterGhost");
         root.layer = layer;
@@ -50,11 +54,19 @@ public class ShapedGhost
 
         partPivots = new Transform[parts.Length];
         for (int i = 0; i < parts.Length; i++)
-            partPivots[i] = CreatePivot(parts[i], body, layer);
+        {
+            partPivots[i] = CreatePivot(parts[i], body, root.transform, layer);
+            anchorSources.Add(parts[i]);
+            anchorPivots.Add(partPivots[i]);
+        }
+
+        if (this.recording != null)
+            CreateWheelPivots(vehicle, body, layer);
 
         Transform rigRoot = setup.RigRoot;
-        CopyRenderers(vehicle, body, parts, rigRoot, layer);
-        CopyPowerEffects(vehicle, body, parts, rigRoot);
+        CreateSpinnerPivots(vehicle, body, rigRoot, layer);
+        CopyRenderers(vehicle, body, rigRoot, layer);
+        CopyPowerEffects(vehicle, body, rigRoot);
 
         if (setup.PhysicsRig != null)
         {
@@ -68,7 +80,10 @@ public class ShapedGhost
         if (setup.LegAnimator != null)
             legAnimation = new(vehicle, setup.LegAnimator);
         if (rigRoot != null)
+        {
             umbrella = UmbrellaAnimation.Find(vehicle, rigRoot, rig);
+            FindRigSpinners(vehicle, rigRoot);
+        }
 
         genericModel = modelTransform.gameObject;
         genericModel.SetActive(false);
@@ -83,8 +98,12 @@ public class ShapedGhost
         if (physicsContainer != null)
             MatchPhysicsVisibility();
 
-        if (parts != null)
+        if (recording != null)
             UpdateParts(from, to, blend);
+
+        float speed = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend).magnitude;
+        foreach (SpinningPart spinner in spinners)
+            spinner.Update(deltaTime, speed);
 
         bool pressed = blend < 0.5f ? actionPressed[from] : actionPressed[to];
         umbrella?.Update(pressed, deltaTime);
@@ -121,8 +140,31 @@ public class ShapedGhost
     {
         for (int i = 0; i < partPivots.Length; i++)
         {
-            partPivots[i].localPosition = Vector3.Lerp(parts.Positions[from][i], parts.Positions[to][i], blend);
-            partPivots[i].localRotation = Quaternion.Slerp(parts.Rotations[from][i], parts.Rotations[to][i], blend);
+            partPivots[i].localPosition = Vector3.Lerp(recording.Positions[from][i], recording.Positions[to][i], blend);
+            partPivots[i].localRotation = Quaternion.Slerp(recording.Rotations[from][i], recording.Rotations[to][i], blend);
+        }
+
+        foreach ((Transform pivot, int wheel) in wheelPivots)
+        {
+            float angle = Mathf.Lerp(recording.WheelAngles[from][wheel], recording.WheelAngles[to][wheel], blend);
+            recording.Wheels[wheel].Pose(angle, out Vector3 position, out Quaternion rotation);
+            pivot.localPosition = position;
+            pivot.localRotation = rotation;
+        }
+    }
+
+    private void CreateWheelPivots(Transform vehicle, Transform body, int layer)
+    {
+        for (int i = 0; i < recording.Wheels.Length; i++)
+        {
+            Transform source = TransformPaths.Find(vehicle, recording.Wheels[i].Path);
+            if (source == null)
+                continue;
+
+            Transform pivot = CreatePivot(source, body, root.transform, layer);
+            anchorSources.Add(source);
+            anchorPivots.Add(pivot);
+            wheelPivots.Add((pivot, i));
         }
     }
 
@@ -162,16 +204,48 @@ public class ShapedGhost
         }
     }
 
-    private Transform CreatePivot(Transform part, Transform body, int layer)
+    private static Transform CreatePivot(Transform source, Transform anchor, Transform parent, int layer)
     {
-        Transform pivot = new GameObject(part.name).transform;
+        Transform pivot = new GameObject(source.name).transform;
         pivot.gameObject.layer = layer;
-        pivot.SetParent(root.transform, false);
-        RelativePose.Copy(pivot, part, body);
+        pivot.SetParent(parent, false);
+        RelativePose.Copy(pivot, source, anchor);
         return pivot;
     }
 
-    private void CopyRenderers(Transform vehicle, Transform body, Transform[] parts, Transform rigRoot, int layer)
+    private void CreateSpinnerPivots(Transform vehicle, Transform body, Transform rigRoot, int layer)
+    {
+        var rotators = vehicle.GetComponentsInChildren<RotateAroundAxis>(true);
+        for (int i = 0; i < rotators.Length; i++)
+        {
+            Transform source = rotators[i].transform;
+            if (!SpinningPart.Spins(rotators[i]) || (rigRoot != null && source.IsChildOf(rigRoot)))
+                continue;
+
+            FindPlacement(source, body, out Transform anchor, out Transform parent);
+            Transform pivot = CreatePivot(source, anchor, parent, layer);
+            anchorSources.Add(source);
+            anchorPivots.Add(pivot);
+            spinners.Add(new SpinningPart(pivot, rotators[i]));
+        }
+    }
+
+    private void FindRigSpinners(Transform vehicle, Transform rigRoot)
+    {
+        var rotators = vehicle.GetComponentsInChildren<RotateAroundAxis>(true);
+        for (int i = 0; i < rotators.Length; i++)
+        {
+            Transform source = rotators[i].transform;
+            if (!SpinningPart.Spins(rotators[i]) || !source.IsChildOf(rigRoot))
+                continue;
+
+            Transform copy = source == rigRoot ? rig.Root : TransformPaths.Find(rig.Root, TransformPaths.RelativePath(source, rigRoot));
+            if (copy != null)
+                spinners.Add(new SpinningPart(copy, rotators[i]));
+        }
+    }
+
+    private void CopyRenderers(Transform vehicle, Transform body, Transform rigRoot, int layer)
     {
         var renderers = vehicle.GetComponentsInChildren<Renderer>(false);
         for (int i = 0; i < renderers.Length; i++)
@@ -184,7 +258,7 @@ public class ShapedGhost
             if (renderer.GetComponentInParent<Fire>(true) != null)
                 continue;
 
-            FindPlacement(renderer.transform, body, parts, out Transform anchor, out Transform parent);
+            FindPlacement(renderer.transform, body, out Transform anchor, out Transform parent);
 
             SkinnedMeshRenderer skinned = renderer.TryCast<SkinnedMeshRenderer>();
             if (skinned != null)
@@ -204,7 +278,7 @@ public class ShapedGhost
         }
     }
 
-    private void CopyPowerEffects(Transform vehicle, Transform body, Transform[] parts, Transform rigRoot)
+    private void CopyPowerEffects(Transform vehicle, Transform body, Transform rigRoot)
     {
         var fires = vehicle.GetComponentsInChildren<Fire>(true);
         for (int i = 0; i < fires.Length; i++)
@@ -214,7 +288,7 @@ public class ShapedGhost
             if (rigRoot != null && fires[i].transform.IsChildOf(rigRoot))
                 continue;
 
-            FindPlacement(fires[i].transform, body, parts, out Transform anchor, out Transform parent);
+            FindPlacement(fires[i].transform, body, out Transform anchor, out Transform parent);
             power.AddDetachedFire(fires[i], anchor, parent);
         }
 
@@ -226,16 +300,16 @@ public class ShapedGhost
             if (rigRoot != null && blocks[i].transform.IsChildOf(rigRoot))
                 continue;
 
-            FindPlacement(blocks[i].transform, body, parts, out Transform anchor, out Transform parent);
+            FindPlacement(blocks[i].transform, body, out Transform anchor, out Transform parent);
             power.AddDetachedBlock(blocks[i], anchor, parent);
         }
     }
 
-    private void FindPlacement(Transform source, Transform body, Transform[] parts, out Transform anchor, out Transform parent)
+    private void FindPlacement(Transform source, Transform body, out Transform anchor, out Transform parent)
     {
-        int anchorIndex = FindAnchor(source, body, parts);
-        anchor = anchorIndex >= 0 ? parts[anchorIndex] : body;
-        parent = anchorIndex >= 0 ? partPivots[anchorIndex] : root.transform;
+        int anchorIndex = FindAnchor(source, body);
+        anchor = anchorIndex >= 0 ? anchorSources[anchorIndex] : body;
+        parent = anchorIndex >= 0 ? anchorPivots[anchorIndex] : root.transform;
     }
 
     private Mesh Bake(SkinnedMeshRenderer skinned)
@@ -247,13 +321,13 @@ public class ShapedGhost
         return baked;
     }
 
-    private static int FindAnchor(Transform transform, Transform body, Transform[] parts)
+    private int FindAnchor(Transform transform, Transform body)
     {
         for (Transform t = transform; t != null && t != body; t = t.parent)
         {
-            for (int i = 0; i < parts.Length; i++)
+            for (int i = 0; i < anchorSources.Count; i++)
             {
-                if (parts[i] == t)
+                if (anchorSources[i] == t)
                     return i;
             }
         }

@@ -1,9 +1,13 @@
+using System;
+using System.Collections.Generic;
 using System.IO;
+using Il2Cpp;
 using Il2CppSpeed.GhostCar;
 using Il2CppSpeed.Level;
 using MelonLoader;
 using MelonLoader.Utils;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace BetterGhosts;
 
@@ -18,6 +22,7 @@ public class LevelSession
     private Transform vehicle;
     private Transform body;
     private Transform[] parts;
+    private Transform[] wheels;
     private GhostRecorder recorder;
     private ShapedGhost ghost;
     private bool ghostAttempted;
@@ -50,9 +55,11 @@ public class LevelSession
 
         gameplayStarted = true;
         levelWon = false;
-        if (parts.Length > 0)
-            recorder = new GhostRecorder(manager, body, parts, setup);
+        if (RecordsParts)
+            recorder = new GhostRecorder(manager, vehicle, body, parts, wheels, setup);
     }
+
+    private bool RecordsParts => parts.Length > 0 || wheels.Length > 0;
 
     public void OnLevelWon()
     {
@@ -127,7 +134,22 @@ public class LevelSession
             return;
         }
 
+        wheels = foundSetup.RecordWheelSpin ? FindWheels(foundSetup.RigRoot) : Array.Empty<Transform>();
         setup = foundSetup;
+    }
+
+    private Transform[] FindWheels(Transform rigRoot)
+    {
+        var inputWheels = vehicle.GetComponentsInChildren<InputWheel>(false);
+        List<Transform> found = new();
+        for (int i = 0; i < inputWheels.Length; i++)
+        {
+            Transform wheel = inputWheels[i].transform;
+            if (wheel.GetComponent<HingeJoint>() == null || (rigRoot != null && wheel.IsChildOf(rigRoot)))
+                continue;
+            found.Add(wheel);
+        }
+        return found.ToArray();
     }
 
     private bool GhostDataReady => manager.ghostTransform != null && manager.existingGhostData != null;
@@ -149,7 +171,7 @@ public class LevelSession
             return;
 
         ghostAttempted = true;
-        PartRecording recording = parts.Length > 0 ? LoadRecording() : null;
+        PartRecording recording = RecordsParts ? LoadRecording() : null;
         ghost = new ShapedGhost(manager, vehicle, body, parts, setup, recording);
     }
 
@@ -176,6 +198,7 @@ public class LevelSession
         recorder = null;
         setup = null;
         parts = null;
+        wheels = null;
         manager = null;
         levelWon = false;
     }
