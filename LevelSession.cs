@@ -12,8 +12,15 @@ public class LevelSession
     readonly MelonLogger.Instance logger;
 
     GhostCarManager manager;
+    LevelTimer levelTimer;
     bool levelWon;
+    VehicleSetup setup;
+    Transform vehicle;
+    Transform body;
+    Transform[] parts;
     GhostRecorder recorder;
+    ShapedGhost ghost;
+    bool ghostGaveUp;
 
     public LevelSession(MelonLogger.Instance logger)
     {
@@ -50,6 +57,11 @@ public class LevelSession
 
         if (!levelWon)
             recorder.Update();
+
+        if (ghost == null && !ghostGaveUp)
+            TryCreateGhost();
+
+        ghost?.Update(levelTimer != null ? levelTimer.time : 0f);
     }
 
     public void OnGhostSaved(GhostCarInfo info, GhostCarData data)
@@ -82,34 +94,98 @@ public class LevelSession
 
     void StartRun()
     {
+        levelTimer = manager.levelTimer != null ? manager.levelTimer : Object.FindObjectOfType<LevelTimer>();
+
         var playerVehicle = manager.car != null ? manager.car : Object.FindObjectOfType<ThisIsThePlayerVehicle>();
         if (playerVehicle == null || playerVehicle._mainRigidbody == null)
             return;
 
         var vehicleName = playerVehicle.gameObject.name;
-        var setup = VehicleSetups.Find(vehicleName);
-        if (setup == null)
+        var foundSetup = VehicleSetups.Find(vehicleName);
+        if (foundSetup == null)
             return;
 
-        var vehicle = playerVehicle.transform;
-        var parts = new Transform[setup.PartPaths.Length];
+        vehicle = playerVehicle.transform;
+        body = playerVehicle._mainRigidbody.transform;
+        parts = new Transform[foundSetup.PartPaths.Length];
         for (int i = 0; i < parts.Length; i++)
         {
-            parts[i] = TransformPaths.Find(vehicle, setup.PartPaths[i]);
+            parts[i] = TransformPaths.Find(vehicle, foundSetup.PartPaths[i]);
             if (parts[i] == null)
             {
-                logger.Warning($"{vehicleName} has no {setup.PartPaths[i]}");
+                logger.Warning($"{vehicleName} has no {foundSetup.PartPaths[i]}");
                 return;
             }
         }
 
-        recorder = new GhostRecorder(manager, playerVehicle._mainRigidbody.transform, parts, setup);
+        setup = foundSetup;
+        recorder = new GhostRecorder(manager, body, parts, setup);
+    }
+
+    void TryCreateGhost()
+    {
+        if (manager.ghostTransform == null || manager.existingGhostData == null)
+            return;
+
+        ghostGaveUp = true;
+        try
+        {
+            ghost = new ShapedGhost(manager, vehicle, body, parts, LoadRecordingForExistingGhost());
+        }
+        catch (System.Exception e)
+        {
+            logger.Error($"Couldn't build ghost: {e}");
+        }
+    }
+
+    PartRecording LoadRecordingForExistingGhost()
+    {
+        var info = manager.existingGhostInfo;
+        var instanceId = info != null ? info.instanceId : null;
+        if (string.IsNullOrEmpty(instanceId))
+            return null;
+
+        var path = Path.Combine(RecordingFolder, instanceId + ".bgh");
+        if (!File.Exists(path))
+            return null;
+
+        PartRecording recording;
+        try
+        {
+            recording = PartRecording.Load(path);
+        }
+        catch (System.Exception e)
+        {
+            logger.Warning($"Couldn't read {Path.GetFileName(path)}: {e.Message}");
+            return null;
+        }
+
+        if (recording.VehicleName != setup.VehicleName || !SamePaths(recording.PartPaths, setup.PartPaths))
+            return null;
+        return recording;
     }
 
     void EndRun()
     {
+        ghost?.Destroy();
+        ghost = null;
+        ghostGaveUp = false;
         recorder = null;
+        setup = null;
+        parts = null;
         manager = null;
         levelWon = false;
+    }
+
+    static bool SamePaths(string[] a, string[] b)
+    {
+        if (a.Length != b.Length)
+            return false;
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (a[i] != b[i])
+                return false;
+        }
+        return true;
     }
 }
