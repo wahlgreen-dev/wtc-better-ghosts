@@ -46,7 +46,7 @@ public class LevelSession
 
     public void Update()
     {
-        if (recorder == null)
+        if (setup == null)
             return;
 
         if (manager == null)
@@ -56,12 +56,12 @@ public class LevelSession
         }
 
         if (!levelWon)
-            recorder.Update();
+            recorder?.Update();
 
         if (ghost == null && !ghostGaveUp)
             TryCreateGhost();
 
-        ghost?.Update(levelTimer != null ? levelTimer.time : 0f);
+        ghost?.Update(levelTimer != null ? levelTimer.time : 0f, Time.deltaTime);
     }
 
     public void OnGhostSaved(GhostCarInfo info, GhostCarData data)
@@ -101,7 +101,7 @@ public class LevelSession
             return;
 
         var vehicleName = playerVehicle.gameObject.name;
-        var foundSetup = VehicleSetups.Find(vehicleName);
+        var foundSetup = VehicleSetups.Find(playerVehicle.transform);
         if (foundSetup == null)
             return;
 
@@ -119,7 +119,8 @@ public class LevelSession
         }
 
         setup = foundSetup;
-        recorder = new GhostRecorder(manager, body, parts, setup);
+        if (parts.Length > 0)
+            recorder = new GhostRecorder(manager, body, parts, setup);
     }
 
     void TryCreateGhost()
@@ -130,7 +131,8 @@ public class LevelSession
         ghostGaveUp = true;
         try
         {
-            ghost = new ShapedGhost(manager, vehicle, body, parts, LoadRecordingForExistingGhost());
+            ghost = new ShapedGhost(manager, vehicle, body, parts, setup,
+                parts.Length > 0 ? LoadRecordingForExistingGhost() : null);
         }
         catch (System.Exception e)
         {

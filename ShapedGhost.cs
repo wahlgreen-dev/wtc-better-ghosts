@@ -1,38 +1,38 @@
 using System.Collections.Generic;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Il2CppSpeed.GhostCar;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace BetterGhosts;
 
 public class ShapedGhost
 {
     const string GenericModelName = "GhostCarModel";
-    const int PaletteSlotChannel = 3;
-    const float GhostBodyPaletteSlot = 34.09375f;
 
     readonly GameObject root;
-    readonly Material material;
+    readonly GhostPalette palette;
     readonly GameObject genericModel;
     readonly Transform[] partPivots;
     readonly PartRecording parts;
+    readonly AnimatedRig rig;
+    readonly LegAnimation legAnimation;
     readonly List<float> bodyTimes = new();
     readonly List<Vector3> bodyPositions = new();
     readonly List<Quaternion> bodyRotations = new();
+    readonly List<Vector3> bodyVelocities = new();
+    readonly List<bool> bodyGrounded = new();
+    readonly List<float> bodySkids = new();
     readonly SampleCursor bodyCursor;
-    readonly List<Mesh> createdMeshes = new();
-    readonly Dictionary<int, Mesh> paletteSlotStreams = new();
+    readonly List<Mesh> bakedMeshes = new();
 
     public ShapedGhost(GhostCarManager manager, Transform vehicle, Transform body, Transform[] parts,
-        PartRecording recording)
+        VehicleSetup setup, PartRecording recording)
     {
         var ghost = manager.ghostTransform;
         var modelTransform = TransformPaths.FindDescendant(ghost, GenericModelName);
         var ghostRenderer = FindGhostRenderer(modelTransform != null ? modelTransform : ghost);
         if (ghostRenderer == null)
             throw new System.InvalidOperationException("the game's ghost has no mesh renderer to take the material from");
-        material = ghostRenderer.sharedMaterial;
+        palette = new GhostPalette(ghostRenderer);
 
         CacheBodySamples(manager.existingGhostData);
         bodyCursor = new SampleCursor(bodyTimes);
@@ -48,7 +48,14 @@ public class ShapedGhost
         for (int i = 0; i < parts.Length; i++)
             partPivots[i] = CreatePivot(parts[i], body, root.transform, ghostRenderer.gameObject.layer);
 
-        CopyRenderers(vehicle, body, parts, ghostRenderer);
+        var animated = setup.LegAnimator != null ? setup.LegAnimator.transform : null;
+        CopyRenderers(vehicle, body, parts, animated, ghostRenderer.gameObject.layer);
+
+        if (setup.LegAnimator != null)
+        {
+            rig = new AnimatedRig(setup.LegAnimator, body, root.transform, palette);
+            legAnimation = new LegAnimation(vehicle, setup.LegAnimator);
+        }
 
         if (modelTransform != null)
         {
@@ -57,7 +64,7 @@ public class ShapedGhost
         }
     }
 
-    public void Update(float time)
+    public void Update(float time, float deltaTime)
     {
         if (root == null)
             return;
@@ -76,6 +83,20 @@ public class ShapedGhost
                 partPivots[i].localRotation = Quaternion.Slerp(parts.Rotations[from][i], parts.Rotations[to][i], blend);
             }
         }
+
+        if (rig != null)
+        {
+            var motion = new GhostMotion
+            {
+                Position = root.transform.position,
+                Rotation = root.transform.rotation,
+                Velocity = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend),
+                IsGrounded = blend < 0.5f ? bodyGrounded[from] : bodyGrounded[to],
+                Skid = Mathf.Lerp(bodySkids[from], bodySkids[to], blend),
+            };
+            legAnimation.Drive(rig.Animator, motion, deltaTime);
+            rig.BakeSkins();
+        }
     }
 
     public void Destroy()
@@ -84,7 +105,9 @@ public class ShapedGhost
             genericModel.SetActive(true);
         if (root != null)
             Object.Destroy(root);
-        foreach (var mesh in createdMeshes)
+        rig?.Destroy();
+        palette.Destroy();
+        foreach (var mesh in bakedMeshes)
         {
             if (mesh != null)
                 Object.Destroy(mesh);
@@ -103,6 +126,9 @@ public class ShapedGhost
             bodyTimes.Add(sample.time);
             bodyPositions.Add(sample.position);
             bodyRotations.Add(sample.rotation);
+            bodyVelocities.Add(sample.velocity);
+            bodyGrounded.Add(sample.isGrounded);
+            bodySkids.Add(sample.skid);
         }
     }
 
@@ -117,13 +143,15 @@ public class ShapedGhost
         return pivot;
     }
 
-    void CopyRenderers(Transform vehicle, Transform body, Transform[] parts, Renderer ghostRenderer)
+    void CopyRenderers(Transform vehicle, Transform body, Transform[] parts, Transform animated, int layer)
     {
         var renderers = vehicle.GetComponentsInChildren<Renderer>(false);
         for (int i = 0; i < renderers.Length; i++)
         {
             var renderer = renderers[i];
             if (!renderer.enabled || TransformPaths.HasComponentNamed(renderer.transform, "Billboard"))
+                continue;
+            if (animated != null && renderer.transform.IsChildOf(animated))
                 continue;
 
             var anchorIndex = FindAnchor(renderer.transform, body, parts);
@@ -133,7 +161,7 @@ public class ShapedGhost
             var skinned = renderer.TryCast<SkinnedMeshRenderer>();
             if (skinned != null)
             {
-                CopyRenderer(renderer, BakeWithGhostPalette(skinned), null, anchor, parent, ghostRenderer);
+                CopyRenderer(renderer, BakeWithGhostPalette(skinned), null, anchor, parent, layer);
                 continue;
             }
 
@@ -144,7 +172,7 @@ public class ShapedGhost
                 continue;
 
             var mesh = filter.sharedMesh;
-            CopyRenderer(renderer, mesh, PaletteSlotStream(mesh.vertexCount), anchor, parent, ghostRenderer);
+            CopyRenderer(renderer, mesh, palette.SlotStream(mesh.vertexCount), anchor, parent, layer);
         }
     }
 
@@ -152,34 +180,9 @@ public class ShapedGhost
     {
         var baked = new Mesh();
         skinned.BakeMesh(baked);
-        baked.SetUVs(PaletteSlotChannel, PaletteSlots(baked.vertexCount));
-        createdMeshes.Add(baked);
+        baked.SetUVs(GhostPalette.SlotChannel, GhostPalette.Slots(baked.vertexCount));
+        bakedMeshes.Add(baked);
         return baked;
-    }
-
-    Mesh PaletteSlotStream(int vertexCount)
-    {
-        if (paletteSlotStreams.TryGetValue(vertexCount, out var stream))
-            return stream;
-
-        stream = new Mesh();
-        var layout = new Il2CppStructArray<VertexAttributeDescriptor>(1);
-        layout[0] = new VertexAttributeDescriptor(VertexAttribute.TexCoord3, VertexAttributeFormat.Float32, 2, 0);
-        stream.SetVertexBufferParams(vertexCount, layout);
-        stream.SetUVs(PaletteSlotChannel, PaletteSlots(vertexCount));
-
-        paletteSlotStreams[vertexCount] = stream;
-        createdMeshes.Add(stream);
-        return stream;
-    }
-
-    static Il2CppSystem.Collections.Generic.List<Vector2> PaletteSlots(int vertexCount)
-    {
-        var slots = new Il2CppSystem.Collections.Generic.List<Vector2>(vertexCount);
-        var slot = new Vector2(GhostBodyPaletteSlot, 0f);
-        for (int i = 0; i < vertexCount; i++)
-            slots.Add(slot);
-        return slots;
     }
 
     static int FindAnchor(Transform transform, Transform body, Transform[] parts)
@@ -195,11 +198,10 @@ public class ShapedGhost
         return -1;
     }
 
-    void CopyRenderer(Renderer source, Mesh mesh, Mesh paletteSlotStream, Transform anchor, Transform parent,
-        Renderer ghostRenderer)
+    void CopyRenderer(Renderer source, Mesh mesh, Mesh paletteSlotStream, Transform anchor, Transform parent, int layer)
     {
         var copy = new GameObject(source.gameObject.name);
-        copy.layer = ghostRenderer.gameObject.layer;
+        copy.layer = layer;
         var transform = copy.transform;
         transform.SetParent(parent, false);
         transform.localPosition = anchor.InverseTransformPoint(source.transform.position);
@@ -208,22 +210,9 @@ public class ShapedGhost
 
         copy.AddComponent<MeshFilter>().sharedMesh = mesh;
         var renderer = copy.AddComponent<MeshRenderer>();
-        renderer.shadowCastingMode = ghostRenderer.shadowCastingMode;
-        renderer.receiveShadows = ghostRenderer.receiveShadows;
         if (paletteSlotStream != null)
             renderer.additionalVertexStreams = paletteSlotStream;
-
-        var subMeshCount = mesh.subMeshCount;
-        if (subMeshCount <= 1)
-        {
-            renderer.sharedMaterial = material;
-            return;
-        }
-
-        var materials = new Il2CppReferenceArray<Material>(subMeshCount);
-        for (int i = 0; i < subMeshCount; i++)
-            materials[i] = material;
-        renderer.sharedMaterials = materials;
+        palette.Paint(renderer, mesh.subMeshCount);
     }
 
     static Renderer FindGhostRenderer(Transform model)
