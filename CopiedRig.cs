@@ -99,7 +99,7 @@ public class CopiedRig
     {
         Rigidbody body = hinge.GetComponent<Rigidbody>();
         Object.DestroyImmediate(hinge);
-        body.isKinematic = true;
+        Object.DestroyImmediate(body);
     }
 
     private static void DetachDynamicBodies(GameObject copy, Transform physicsContainer)
