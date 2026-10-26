@@ -9,25 +9,25 @@ namespace BetterGhosts;
 
 public class LevelSession
 {
-    readonly MelonLogger.Instance logger;
+    private readonly MelonLogger.Instance logger;
 
-    GhostCarManager manager;
-    LevelTimer levelTimer;
-    bool levelWon;
-    VehicleSetup setup;
-    Transform vehicle;
-    Transform body;
-    Transform[] parts;
-    GhostRecorder recorder;
-    ShapedGhost ghost;
-    bool ghostGaveUp;
+    private GhostCarManager manager;
+    private LevelTimer levelTimer;
+    private bool levelWon;
+    private VehicleSetup setup;
+    private Transform vehicle;
+    private Transform body;
+    private Transform[] parts;
+    private GhostRecorder recorder;
+    private ShapedGhost ghost;
+    private bool ghostAttempted;
 
     public LevelSession(MelonLogger.Instance logger)
     {
         this.logger = logger;
     }
 
-    static string RecordingFolder => Path.Combine(MelonEnvironment.UserDataDirectory, "BetterGhosts", "ghosts");
+    private static string RecordingFolder => Path.Combine(MelonEnvironment.UserDataDirectory, "BetterGhosts", "ghosts");
 
     public void OnGameplayStarted(GhostCarManager manager)
     {
@@ -58,50 +58,37 @@ public class LevelSession
         if (!levelWon)
             recorder?.Update();
 
-        if (ghost == null && !ghostGaveUp)
+        if (ghost == null && !ghostAttempted)
             TryCreateGhost();
 
-        ghost?.Update(levelTimer != null ? levelTimer.time : 0f, Time.deltaTime);
+        ghost?.Update(levelTimer.time, Time.deltaTime);
     }
 
     public void OnGhostSaved(GhostCarInfo info, GhostCarData data)
     {
-        if (recorder == null || manager == null || info == null)
-            return;
-
-        var levelId = info.levelId;
-        var instanceId = info.instanceId;
-        if (levelId != manager.levelId || string.IsNullOrEmpty(instanceId))
+        if (recorder == null)
             return;
 
         recorder.Update();
-        var gameSampleCount = data != null && data.ghostData != null ? data.ghostData.Count : -1;
+        int gameSampleCount = data.ghostData.Count;
         if (recorder.Recording.SampleCount != gameSampleCount)
         {
             logger.Warning($"Not saving ghost parts: {recorder.Recording.SampleCount} samples, the game has {gameSampleCount}");
             return;
         }
 
-        try
-        {
-            recorder.Recording.Save(Path.Combine(RecordingFolder, instanceId + ".bgh"));
-        }
-        catch (System.Exception e)
-        {
-            logger.Error($"Couldn't save ghost parts: {e}");
-        }
+        recorder.Recording.Save(Path.Combine(RecordingFolder, info.instanceId + ".bgh"));
     }
 
-    void StartRun()
+    private void StartRun()
     {
         levelTimer = manager.levelTimer != null ? manager.levelTimer : Object.FindObjectOfType<LevelTimer>();
 
-        var playerVehicle = manager.car != null ? manager.car : Object.FindObjectOfType<ThisIsThePlayerVehicle>();
-        if (playerVehicle == null || playerVehicle._mainRigidbody == null)
+        ThisIsThePlayerVehicle playerVehicle = manager.car != null ? manager.car : Object.FindObjectOfType<ThisIsThePlayerVehicle>();
+        if (playerVehicle == null)
             return;
 
-        var vehicleName = playerVehicle.gameObject.name;
-        var foundSetup = VehicleSetups.Find(playerVehicle.transform);
+        VehicleSetup foundSetup = VehicleSetups.Find(playerVehicle.transform);
         if (foundSetup == null)
             return;
 
@@ -111,11 +98,11 @@ public class LevelSession
         for (int i = 0; i < parts.Length; i++)
         {
             parts[i] = TransformPaths.Find(vehicle, foundSetup.PartPaths[i]);
-            if (parts[i] == null)
-            {
-                logger.Warning($"{vehicleName} has no {foundSetup.PartPaths[i]}");
-                return;
-            }
+            if (parts[i] != null)
+                continue;
+
+            logger.Warning($"{vehicle.name} has no {foundSetup.PartPaths[i]}");
+            return;
         }
 
         setup = foundSetup;
@@ -123,71 +110,38 @@ public class LevelSession
             recorder = new GhostRecorder(manager, body, parts, setup);
     }
 
-    void TryCreateGhost()
+    private void TryCreateGhost()
     {
         if (manager.ghostTransform == null || manager.existingGhostData == null)
             return;
 
-        ghostGaveUp = true;
-        try
-        {
-            ghost = new ShapedGhost(manager, vehicle, body, parts, setup,
-                parts.Length > 0 ? LoadRecordingForExistingGhost() : null);
-        }
-        catch (System.Exception e)
-        {
-            logger.Error($"Couldn't build ghost: {e}");
-        }
+        ghostAttempted = true;
+        PartRecording recording = parts.Length > 0 ? LoadRecording() : null;
+        ghost = new ShapedGhost(manager, vehicle, body, parts, setup, recording);
     }
 
-    PartRecording LoadRecordingForExistingGhost()
+    private PartRecording LoadRecording()
     {
-        var info = manager.existingGhostInfo;
-        var instanceId = info != null ? info.instanceId : null;
-        if (string.IsNullOrEmpty(instanceId))
-            return null;
-
-        var path = Path.Combine(RecordingFolder, instanceId + ".bgh");
+        string path = Path.Combine(RecordingFolder, manager.existingGhostInfo.instanceId + ".bgh");
         if (!File.Exists(path))
             return null;
 
-        PartRecording recording;
-        try
-        {
-            recording = PartRecording.Load(path);
-        }
-        catch (System.Exception e)
-        {
-            logger.Warning($"Couldn't read {Path.GetFileName(path)}: {e.Message}");
+        PartRecording recording = PartRecording.Load(path);
+        if (recording == null || !recording.Matches(setup))
             return null;
-        }
 
-        if (recording.VehicleName != setup.VehicleName || !SamePaths(recording.PartPaths, setup.PartPaths))
-            return null;
         return recording;
     }
 
-    void EndRun()
+    private void EndRun()
     {
         ghost?.Destroy();
         ghost = null;
-        ghostGaveUp = false;
+        ghostAttempted = false;
         recorder = null;
         setup = null;
         parts = null;
         manager = null;
         levelWon = false;
-    }
-
-    static bool SamePaths(string[] a, string[] b)
-    {
-        if (a.Length != b.Length)
-            return false;
-        for (int i = 0; i < a.Length; i++)
-        {
-            if (a[i] != b[i])
-                return false;
-        }
-        return true;
     }
 }

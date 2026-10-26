@@ -1,3 +1,4 @@
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 
 namespace BetterGhosts;
@@ -6,8 +7,8 @@ public static class TransformPaths
 {
     public static Transform Find(Transform root, string path)
     {
-        var current = root;
-        foreach (var name in path.Split('/'))
+        Transform current = root;
+        foreach (string name in path.Split('/'))
         {
             current = FindChild(current, name);
             if (current == null)
@@ -20,10 +21,11 @@ public static class TransformPaths
     {
         for (int i = 0; i < root.childCount; i++)
         {
-            var child = root.GetChild(i);
+            Transform child = root.GetChild(i);
             if (child.name == name)
                 return child;
-            var found = FindDescendant(child, name);
+
+            Transform found = FindDescendant(child, name);
             if (found != null)
                 return found;
         }
@@ -32,7 +34,7 @@ public static class TransformPaths
 
     public static bool HasComponentNamed(Transform transform, string typeName)
     {
-        var components = transform.GetComponents<Component>();
+        Il2CppArrayBase<Component> components = transform.GetComponents<Component>();
         for (int i = 0; i < components.Length; i++)
         {
             if (components[i] != null && components[i].GetIl2CppType().Name == typeName)
@@ -41,11 +43,11 @@ public static class TransformPaths
         return false;
     }
 
-    static Transform FindChild(Transform parent, string name)
+    private static Transform FindChild(Transform parent, string name)
     {
         for (int i = 0; i < parent.childCount; i++)
         {
-            var child = parent.GetChild(i);
+            Transform child = parent.GetChild(i);
             if (child.name == name)
                 return child;
         }

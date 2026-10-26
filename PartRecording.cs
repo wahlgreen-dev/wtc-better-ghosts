@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 
@@ -8,12 +9,12 @@ namespace BetterGhosts;
 
 public class PartRecording
 {
-    const string Magic = "BGH";
-    const byte FormatVersion = 2;
-    const int BitsPerValue = 10;
-    const ulong ValueMask = (1UL << BitsPerValue) - 1;
-    const float ValueSteps = ValueMask;
-    const float SmallestThreeLimit = 0.70710678f;
+    private const string Magic = "BGH";
+    private const byte FormatVersion = 2;
+    private const int BitsPerValue = 10;
+    private const ulong ValueMask = (1UL << BitsPerValue) - 1;
+    private const float ValueSteps = ValueMask;
+    private const float SmallestThreeLimit = 0.70710678f;
 
     public readonly string VehicleName;
     public readonly string[] PartPaths;
@@ -26,6 +27,11 @@ public class PartRecording
     {
         VehicleName = vehicleName;
         PartPaths = partPaths;
+    }
+
+    public bool Matches(VehicleSetup setup)
+    {
+        return VehicleName == setup.VehicleName && PartPaths.SequenceEqual(setup.PartPaths);
     }
 
     public void Add(Vector3[] positions, Quaternion[] rotations)
@@ -43,20 +49,20 @@ public class PartRecording
     public void Save(string path)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path));
-        using var file = File.Create(path);
-        using var gzip = new GZipStream(file, System.IO.Compression.CompressionLevel.Optimal);
-        using var writer = new BinaryWriter(gzip, Encoding.UTF8);
+        using FileStream file = File.Create(path);
+        using GZipStream gzip = new GZipStream(file, System.IO.Compression.CompressionLevel.Optimal);
+        using BinaryWriter writer = new BinaryWriter(gzip, Encoding.UTF8);
 
         writer.Write(Encoding.ASCII.GetBytes(Magic));
         writer.Write(FormatVersion);
         writer.Write(VehicleName);
         writer.Write(PartPaths.Length);
-        foreach (var partPath in PartPaths)
+        foreach (string partPath in PartPaths)
             writer.Write(partPath);
         writer.Write(SampleCount);
 
-        var mins = new Vector3[PartPaths.Length];
-        var ranges = new Vector3[PartPaths.Length];
+        Vector3[] mins = new Vector3[PartPaths.Length];
+        Vector3[] ranges = new Vector3[PartPaths.Length];
         for (int part = 0; part < PartPaths.Length; part++)
         {
             (mins[part], ranges[part]) = PositionBounds(part);
@@ -67,47 +73,43 @@ public class PartRecording
         for (int sample = 0; sample < SampleCount; sample++)
         {
             for (int part = 0; part < PartPaths.Length; part++)
-            {
-                writer.Write(PackPosition(Positions[sample][part], mins[part], ranges[part])
-                    | PackRotation(Rotations[sample][part]) << 30);
-            }
+                writer.Write(PackPosition(Positions[sample][part], mins[part], ranges[part]) | PackRotation(Rotations[sample][part]) << 30);
         }
     }
 
     public static PartRecording Load(string path)
     {
-        using var file = File.OpenRead(path);
-        using var gzip = new GZipStream(file, CompressionMode.Decompress);
-        using var reader = new BinaryReader(gzip, Encoding.UTF8);
+        using FileStream file = File.OpenRead(path);
+        using GZipStream gzip = new GZipStream(file, CompressionMode.Decompress);
+        using BinaryReader reader = new BinaryReader(gzip, Encoding.UTF8);
 
         if (Encoding.ASCII.GetString(reader.ReadBytes(Magic.Length)) != Magic)
-            throw new InvalidDataException("not a Better Ghosts recording");
-        var version = reader.ReadByte();
-        if (version != FormatVersion)
-            throw new InvalidDataException($"format version {version}");
+            return null;
+        if (reader.ReadByte() != FormatVersion)
+            return null;
 
-        var vehicleName = reader.ReadString();
-        var partPaths = new string[reader.ReadInt32()];
+        string vehicleName = reader.ReadString();
+        string[] partPaths = new string[reader.ReadInt32()];
         for (int part = 0; part < partPaths.Length; part++)
             partPaths[part] = reader.ReadString();
-        var sampleCount = reader.ReadInt32();
+        int sampleCount = reader.ReadInt32();
 
-        var mins = new Vector3[partPaths.Length];
-        var ranges = new Vector3[partPaths.Length];
+        Vector3[] mins = new Vector3[partPaths.Length];
+        Vector3[] ranges = new Vector3[partPaths.Length];
         for (int part = 0; part < partPaths.Length; part++)
         {
             mins[part] = ReadVector(reader);
             ranges[part] = ReadVector(reader);
         }
 
-        var recording = new PartRecording(vehicleName, partPaths);
+        PartRecording recording = new PartRecording(vehicleName, partPaths);
         for (int sample = 0; sample < sampleCount; sample++)
         {
-            var positions = new Vector3[partPaths.Length];
-            var rotations = new Quaternion[partPaths.Length];
+            Vector3[] positions = new Vector3[partPaths.Length];
+            Quaternion[] rotations = new Quaternion[partPaths.Length];
             for (int part = 0; part < partPaths.Length; part++)
             {
-                var packed = reader.ReadUInt64();
+                ulong packed = reader.ReadUInt64();
                 positions[part] = UnpackPosition(packed, mins[part], ranges[part]);
                 rotations[part] = UnpackRotation(packed >> 30);
             }
@@ -116,13 +118,10 @@ public class PartRecording
         return recording;
     }
 
-    (Vector3 min, Vector3 range) PositionBounds(int part)
+    private (Vector3 min, Vector3 range) PositionBounds(int part)
     {
-        if (SampleCount == 0)
-            return (Vector3.zero, Vector3.zero);
-
-        var min = Positions[0][part];
-        var max = min;
+        Vector3 min = Positions[0][part];
+        Vector3 max = min;
         for (int sample = 1; sample < SampleCount; sample++)
         {
             min = Vector3.Min(min, Positions[sample][part]);
@@ -131,54 +130,54 @@ public class PartRecording
         return (min, max - min);
     }
 
-    static ulong PackPosition(Vector3 position, Vector3 min, Vector3 range)
+    private static ulong PackPosition(Vector3 position, Vector3 min, Vector3 range)
     {
-        return Quantize(position.x, min.x, range.x)
-            | Quantize(position.y, min.y, range.y) << BitsPerValue
-            | Quantize(position.z, min.z, range.z) << (2 * BitsPerValue);
+        return Quantize(position.x, min.x, range.x) | Quantize(position.y, min.y, range.y) << BitsPerValue | Quantize(position.z, min.z, range.z) << (2 * BitsPerValue);
     }
 
-    static Vector3 UnpackPosition(ulong packed, Vector3 min, Vector3 range)
+    private static Vector3 UnpackPosition(ulong packed, Vector3 min, Vector3 range)
     {
-        return new Vector3(
-            Dequantize(packed & ValueMask, min.x, range.x),
-            Dequantize(packed >> BitsPerValue & ValueMask, min.y, range.y),
-            Dequantize(packed >> (2 * BitsPerValue) & ValueMask, min.z, range.z));
+        float x = Dequantize(packed & ValueMask, min.x, range.x);
+        float y = Dequantize(packed >> BitsPerValue & ValueMask, min.y, range.y);
+        float z = Dequantize(packed >> (2 * BitsPerValue) & ValueMask, min.z, range.z);
+        return new Vector3(x, y, z);
     }
 
-    static ulong PackRotation(Quaternion rotation)
+    private static ulong PackRotation(Quaternion rotation)
     {
-        var components = new[] { rotation.x, rotation.y, rotation.z, rotation.w };
-        var largest = 0;
+        float[] components = { rotation.x, rotation.y, rotation.z, rotation.w };
+        int largest = 0;
         for (int i = 1; i < 4; i++)
         {
             if (Mathf.Abs(components[i]) > Mathf.Abs(components[largest]))
                 largest = i;
         }
 
-        var sign = components[largest] < 0f ? -1f : 1f;
+        float sign = components[largest] < 0f ? -1f : 1f;
         ulong packed = (ulong)largest;
-        var shift = 2;
+        int shift = 2;
         for (int i = 0; i < 4; i++)
         {
             if (i == largest)
                 continue;
+
             packed |= Quantize(components[i] * sign, -SmallestThreeLimit, 2f * SmallestThreeLimit) << shift;
             shift += BitsPerValue;
         }
         return packed;
     }
 
-    static Quaternion UnpackRotation(ulong packed)
+    private static Quaternion UnpackRotation(ulong packed)
     {
-        var largest = (int)(packed & 3);
-        var components = new float[4];
-        var sumOfSquares = 0f;
-        var shift = 2;
+        int largest = (int)(packed & 3);
+        float[] components = new float[4];
+        float sumOfSquares = 0f;
+        int shift = 2;
         for (int i = 0; i < 4; i++)
         {
             if (i == largest)
                 continue;
+
             components[i] = Dequantize(packed >> shift & ValueMask, -SmallestThreeLimit, 2f * SmallestThreeLimit);
             sumOfSquares += components[i] * components[i];
             shift += BitsPerValue;
@@ -187,24 +186,27 @@ public class PartRecording
         return new Quaternion(components[0], components[1], components[2], components[3]);
     }
 
-    static ulong Quantize(float value, float min, float range)
+    private static ulong Quantize(float value, float min, float range)
     {
-        return range > 0f ? (ulong)Mathf.RoundToInt(Mathf.Clamp01((value - min) / range) * ValueSteps) : 0UL;
+        if (range <= 0f)
+            return 0UL;
+
+        return (ulong)Mathf.RoundToInt(Mathf.Clamp01((value - min) / range) * ValueSteps);
     }
 
-    static float Dequantize(ulong value, float min, float range)
+    private static float Dequantize(ulong value, float min, float range)
     {
         return min + value / ValueSteps * range;
     }
 
-    static void WriteVector(BinaryWriter writer, Vector3 vector)
+    private static void WriteVector(BinaryWriter writer, Vector3 vector)
     {
         writer.Write(vector.x);
         writer.Write(vector.y);
         writer.Write(vector.z);
     }
 
-    static Vector3 ReadVector(BinaryReader reader)
+    private static Vector3 ReadVector(BinaryReader reader)
     {
         return new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
     }

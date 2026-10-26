@@ -5,10 +5,10 @@ namespace BetterGhosts;
 
 public class GhostRecorder
 {
-    readonly GhostCarManager manager;
-    readonly Transform body;
-    readonly Transform[] parts;
-    int gameSamplesSeen;
+    private readonly GhostCarManager manager;
+    private readonly Transform body;
+    private readonly Transform[] parts;
+    private int gameSamplesSeen;
 
     public PartRecording Recording { get; }
 
@@ -26,7 +26,7 @@ public class GhostRecorder
         if (gameSamples == null)
             return;
 
-        var count = gameSamples.Count;
+        int count = gameSamples.Count;
         if (count < gameSamplesSeen)
         {
             Recording.Clear();
@@ -34,15 +34,15 @@ public class GhostRecorder
         }
 
         for (int i = gameSamplesSeen; i < count; i++)
-            CaptureSample();
+            Capture();
         gameSamplesSeen = count;
     }
 
-    void CaptureSample()
+    private void Capture()
     {
-        var bodyRotationInverse = Quaternion.Inverse(body.rotation);
-        var positions = new Vector3[parts.Length];
-        var rotations = new Quaternion[parts.Length];
+        Quaternion bodyRotationInverse = Quaternion.Inverse(body.rotation);
+        Vector3[] positions = new Vector3[parts.Length];
+        Quaternion[] rotations = new Quaternion[parts.Length];
         for (int i = 0; i < parts.Length; i++)
         {
             positions[i] = body.InverseTransformPoint(parts[i].position);

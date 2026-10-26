@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
@@ -19,41 +20,34 @@ public class VehicleSetup
     public VehicleSetup(string vehicleName, Animator legAnimator)
     {
         VehicleName = vehicleName;
-        PartPaths = new string[0];
+        PartPaths = Array.Empty<string>();
         LegAnimator = legAnimator;
     }
 }
 
 public static class VehicleSetups
 {
-    static readonly Dictionary<string, VehicleSetup> byVehicleName = new();
+    private static readonly Dictionary<string, VehicleSetup> byVehicleName = new();
 
     static VehicleSetups()
     {
-        Add(new VehicleSetup("Car with giraffe wheels Variant",
-            "Rigidbody/Visuals/Components/Lamppost wheel",
-            "Rigidbody/Visuals/Components/Lamppost wheel (2)"));
+        Add(new("Car with giraffe wheels Variant", "Rigidbody/Visuals/Components/Lamppost wheel", "Rigidbody/Visuals/Components/Lamppost wheel (2)"));
     }
 
     public static VehicleSetup Find(Transform vehicle)
     {
-        var name = NormalizeName(vehicle.name);
-        if (byVehicleName.TryGetValue(name, out var setup))
+        string name = vehicle.name.Replace("(Clone)", "").Trim();
+        if (byVehicleName.TryGetValue(name, out VehicleSetup setup))
             return setup;
 
-        var legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
-        if (legs != null && legs.animator != null)
-            return new VehicleSetup(name, legs.animator);
+        CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
+        if (legs == null)
+            return null;
 
-        return null;
+        return new VehicleSetup(name, legs.animator);
     }
 
-    public static string NormalizeName(string objectName)
-    {
-        return objectName.Replace("(Clone)", "").Trim();
-    }
-
-    static void Add(VehicleSetup setup)
+    private static void Add(VehicleSetup setup)
     {
         byVehicleName[setup.VehicleName] = setup;
     }

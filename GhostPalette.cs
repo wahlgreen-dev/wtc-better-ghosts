@@ -8,12 +8,12 @@ namespace BetterGhosts;
 public class GhostPalette
 {
     public const int SlotChannel = 3;
-    const float GhostBodySlot = 34.09375f;
+    private const float GhostBodySlot = 34.09375f;
 
-    readonly Material material;
-    readonly ShadowCastingMode shadowCastingMode;
-    readonly bool receiveShadows;
-    readonly Dictionary<int, Mesh> slotStreams = new();
+    private readonly Material material;
+    private readonly ShadowCastingMode shadowCastingMode;
+    private readonly bool receiveShadows;
+    private readonly Dictionary<int, Mesh> slotStreams = new();
 
     public GhostPalette(Renderer ghostRenderer)
     {
@@ -32,7 +32,7 @@ public class GhostPalette
             return;
         }
 
-        var materials = new Il2CppReferenceArray<Material>(subMeshCount);
+        Il2CppReferenceArray<Material> materials = new Il2CppReferenceArray<Material>(subMeshCount);
         for (int i = 0; i < subMeshCount; i++)
             materials[i] = material;
         renderer.sharedMaterials = materials;
@@ -40,11 +40,11 @@ public class GhostPalette
 
     public Mesh SlotStream(int vertexCount)
     {
-        if (slotStreams.TryGetValue(vertexCount, out var stream))
+        if (slotStreams.TryGetValue(vertexCount, out Mesh stream))
             return stream;
 
         stream = new Mesh();
-        var layout = new Il2CppStructArray<VertexAttributeDescriptor>(1);
+        Il2CppStructArray<VertexAttributeDescriptor> layout = new Il2CppStructArray<VertexAttributeDescriptor>(1);
         layout[0] = new VertexAttributeDescriptor(VertexAttribute.TexCoord3, VertexAttributeFormat.Float32, 2, 0);
         stream.SetVertexBufferParams(vertexCount, layout);
         stream.SetUVs(SlotChannel, Slots(vertexCount));
@@ -55,7 +55,7 @@ public class GhostPalette
     public static Il2CppSystem.Collections.Generic.List<Vector2> Slots(int vertexCount)
     {
         var slots = new Il2CppSystem.Collections.Generic.List<Vector2>(vertexCount);
-        var slot = new Vector2(GhostBodySlot, 0f);
+        Vector2 slot = new Vector2(GhostBodySlot, 0f);
         for (int i = 0; i < vertexCount; i++)
             slots.Add(slot);
         return slots;
@@ -63,10 +63,7 @@ public class GhostPalette
 
     public void Destroy()
     {
-        foreach (var stream in slotStreams.Values)
-        {
-            if (stream != null)
-                Object.Destroy(stream);
-        }
+        foreach (Mesh stream in slotStreams.Values)
+            Object.Destroy(stream);
     }
 }

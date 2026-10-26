@@ -21,14 +21,7 @@ public class BetterGhostsMod : MelonMod
 
     public void OnGameplayStarted()
     {
-        try
-        {
-            Session.OnGameplayStarted(Object.FindObjectOfType<GhostCarManager>());
-        }
-        catch (System.Exception e)
-        {
-            LoggerInstance.Error($"Couldn't start run: {e}");
-        }
+        Session.OnGameplayStarted(Object.FindObjectOfType<GhostCarManager>());
     }
 
     public void OnLevelWon()
