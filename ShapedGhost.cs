@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Il2Cpp;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using Il2CppSpeed.GhostCar;
 using UnityEngine;
@@ -16,6 +17,7 @@ public class ShapedGhost
     private readonly Transform[] partPivots;
     private readonly PartRecording parts;
     private readonly AnimatedRig rig;
+    private readonly PowerEffects power = new();
     private readonly LegAnimation legAnimation;
     private readonly List<float> bodyTimes = new();
     private readonly List<Vector3> bodyPositions = new();
@@ -23,6 +25,7 @@ public class ShapedGhost
     private readonly List<Vector3> bodyVelocities = new();
     private readonly List<bool> bodyGrounded = new();
     private readonly List<float> bodySkids = new();
+    private readonly List<bool> actionPressed = new();
     private readonly SampleCursor bodyCursor;
     private readonly List<Mesh> bakedMeshes = new();
 
@@ -49,10 +52,11 @@ public class ShapedGhost
 
         Transform animated = setup.LegAnimator != null ? setup.LegAnimator.transform : null;
         CopyRenderers(vehicle, body, parts, animated, layer);
+        CopyFires(vehicle, body, parts, animated);
 
         if (setup.LegAnimator != null)
         {
-            rig = new AnimatedRig(setup.LegAnimator, body, root.transform, palette);
+            rig = new AnimatedRig(setup.LegAnimator, body, root.transform, palette, power);
             legAnimation = new LegAnimation(vehicle, setup.LegAnimator);
         }
 
@@ -71,6 +75,8 @@ public class ShapedGhost
 
         if (rig != null)
             UpdateRig(from, to, blend, deltaTime);
+
+        power.SetActive(blend < 0.5f ? actionPressed[from] : actionPressed[to]);
     }
 
     public void Destroy()
@@ -121,6 +127,7 @@ public class ShapedGhost
             bodyVelocities.Add(sample.velocity);
             bodyGrounded.Add(sample.isGrounded);
             bodySkids.Add(sample.skid);
+            actionPressed.Add(sample.actionPressed);
         }
     }
 
@@ -143,6 +150,8 @@ public class ShapedGhost
                 continue;
             if (animated != null && renderer.transform.IsChildOf(animated))
                 continue;
+            if (renderer.GetComponentInParent<Fire>(true) != null)
+                continue;
 
             int anchorIndex = FindAnchor(renderer.transform, body, parts);
             Transform anchor = anchorIndex >= 0 ? parts[anchorIndex] : body;
@@ -163,6 +172,22 @@ public class ShapedGhost
 
             Mesh mesh = filter.sharedMesh;
             CopyRenderer(renderer, mesh, palette.SlotStream(mesh.vertexCount), anchor, parent, layer);
+        }
+    }
+
+    private void CopyFires(Transform vehicle, Transform body, Transform[] parts, Transform animated)
+    {
+        Il2CppArrayBase<Fire> fires = vehicle.GetComponentsInChildren<Fire>(true);
+        for (int i = 0; i < fires.Length; i++)
+        {
+            Transform fireTransform = fires[i].transform;
+            if (animated != null && fireTransform.IsChildOf(animated))
+                continue;
+
+            int anchorIndex = FindAnchor(fireTransform, body, parts);
+            Transform anchor = anchorIndex >= 0 ? parts[anchorIndex] : body;
+            Transform parent = anchorIndex >= 0 ? partPivots[anchorIndex] : root.transform;
+            power.AddDetachedFire(fires[i], anchor, parent);
         }
     }
 

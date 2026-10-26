@@ -6,8 +6,6 @@ namespace BetterGhosts;
 
 public class AnimatedRig
 {
-    private const int MaxStripPasses = 5;
-
     private static readonly HashSet<string> keptComponents = new() { "Transform", "Animator", "MeshFilter", "MeshRenderer", "SkinnedMeshRenderer" };
 
     private class BakedSkin
@@ -19,18 +17,22 @@ public class AnimatedRig
 
     private readonly List<BakedSkin> skins = new();
 
+    private readonly PowerEffects power;
+
     public Animator Animator { get; }
 
-    public AnimatedRig(Animator source, Transform body, Transform parent, GhostPalette palette)
+    public AnimatedRig(Animator source, Transform body, Transform parent, GhostPalette palette, PowerEffects power)
     {
+        this.power = power;
         GameObject holder = new GameObject("BetterGhostRigHolder");
         holder.SetActive(false);
         GameObject copy = Object.Instantiate(source.gameObject, holder.transform);
         copy.name = source.gameObject.name;
 
+        power.AddFromCopy(copy, source.gameObject);
         RemoveBillboards(copy.transform);
-        StripComponents(copy);
-        SetLayer(copy.transform, parent.gameObject.layer);
+        ComponentStripper.Strip(copy, keptComponents, power.Keeps);
+        ComponentStripper.SetLayer(copy.transform, parent.gameObject.layer);
 
         copy.transform.SetParent(parent, false);
         RelativePose.Copy(copy.transform, source.transform, body);
@@ -59,61 +61,26 @@ public class AnimatedRig
             Object.Destroy(baked.Mesh);
     }
 
-    private static void RemoveBillboards(Transform root)
+    private void RemoveBillboards(Transform root)
     {
         Il2CppArrayBase<Renderer> renderers = root.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < renderers.Length; i++)
         {
-            if (TransformPaths.HasComponentNamed(renderers[i].transform, "Billboard"))
+            Transform transform = renderers[i].transform;
+            if (!power.Keeps(transform) && TransformPaths.HasComponentNamed(transform, "Billboard"))
                 Object.DestroyImmediate(renderers[i]);
         }
     }
 
-    private static void StripComponents(GameObject root)
-    {
-        for (int pass = 0; pass < MaxStripPasses; pass++)
-        {
-            bool removed = false;
-            Il2CppArrayBase<Component> components = root.GetComponentsInChildren<Component>(true);
-            for (int i = 0; i < components.Length; i++)
-            {
-                Component component = components[i];
-                if (component == null || keptComponents.Contains(component.GetIl2CppType().Name))
-                    continue;
-                if (!CanRemoveThisPass(component, pass))
-                    continue;
-
-                Object.DestroyImmediate(component);
-                removed = true;
-            }
-
-            if (!removed && pass > 2)
-                return;
-        }
-    }
-
-    private static bool CanRemoveThisPass(Component component, int pass)
-    {
-        if (component.TryCast<MonoBehaviour>() != null || component.TryCast<Joint>() != null)
-            return true;
-        if (component.TryCast<Rigidbody>() != null)
-            return pass >= 2;
-        return pass >= 1;
-    }
-
-    private static void SetLayer(Transform root, int layer)
-    {
-        root.gameObject.layer = layer;
-        for (int i = 0; i < root.childCount; i++)
-            SetLayer(root.GetChild(i), layer);
-    }
-
-    private static void PaintMeshRenderers(GameObject root, GhostPalette palette)
+    private void PaintMeshRenderers(GameObject root, GhostPalette palette)
     {
         Il2CppArrayBase<MeshRenderer> renderers = root.GetComponentsInChildren<MeshRenderer>(true);
         for (int i = 0; i < renderers.Length; i++)
         {
             MeshRenderer renderer = renderers[i];
+            if (power.Keeps(renderer.transform))
+                continue;
+
             MeshFilter filter = renderer.GetComponent<MeshFilter>();
             if (filter == null || filter.sharedMesh == null)
             {
