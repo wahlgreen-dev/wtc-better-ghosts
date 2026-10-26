@@ -19,7 +19,7 @@ public class ShapedGhost
     private readonly List<Transform> anchorPivots = new();
     private readonly List<SpinningPart> spinners = new();
     private readonly PartRecording recording;
-    private readonly List<(Transform pivot, int wheel)> wheelPivots = new();
+    private readonly List<InferredWheel> inferredWheels = new();
     private readonly CopiedRig rig;
     private readonly GameObject physicsContainer;
     private readonly PowerEffects power = new();
@@ -60,10 +60,10 @@ public class ShapedGhost
             anchorPivots.Add(partPivots[i]);
         }
 
-        if (this.recording != null)
-            CreateWheelPivots(vehicle, body, layer);
-
         Transform rigRoot = setup.RigRoot;
+        if (setup.SpinWheels)
+            CreateInferredWheels(vehicle, body, rigRoot, layer);
+
         CreateSpinnerPivots(vehicle, body, rigRoot, layer);
         CopyRenderers(vehicle, body, rigRoot, layer);
         CopyPowerEffects(vehicle, body, rigRoot);
@@ -104,6 +104,8 @@ public class ShapedGhost
         float speed = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend).magnitude;
         foreach (SpinningPart spinner in spinners)
             spinner.Update(deltaTime, speed);
+        foreach (InferredWheel wheel in inferredWheels)
+            wheel.Update(time, deltaTime, speed);
 
         bool pressed = blend < 0.5f ? actionPressed[from] : actionPressed[to];
         umbrella?.Update(pressed, deltaTime);
@@ -143,28 +145,16 @@ public class ShapedGhost
             partPivots[i].localPosition = Vector3.Lerp(recording.Positions[from][i], recording.Positions[to][i], blend);
             partPivots[i].localRotation = Quaternion.Slerp(recording.Rotations[from][i], recording.Rotations[to][i], blend);
         }
-
-        foreach ((Transform pivot, int wheel) in wheelPivots)
-        {
-            float angle = Mathf.Lerp(recording.WheelAngles[from][wheel], recording.WheelAngles[to][wheel], blend);
-            recording.Wheels[wheel].Pose(angle, out Vector3 position, out Quaternion rotation);
-            pivot.localPosition = position;
-            pivot.localRotation = rotation;
-        }
     }
 
-    private void CreateWheelPivots(Transform vehicle, Transform body, int layer)
+    private void CreateInferredWheels(Transform vehicle, Transform body, Transform rigRoot, int layer)
     {
-        for (int i = 0; i < recording.Wheels.Length; i++)
+        foreach (Transform wheel in InputWheels.Find(vehicle, rigRoot))
         {
-            Transform source = TransformPaths.Find(vehicle, recording.Wheels[i].Path);
-            if (source == null)
-                continue;
-
-            Transform pivot = CreatePivot(source, body, root.transform, layer);
-            anchorSources.Add(source);
+            Transform pivot = CreatePivot(wheel, body, root.transform, layer);
+            anchorSources.Add(wheel);
             anchorPivots.Add(pivot);
-            wheelPivots.Add((pivot, i));
+            inferredWheels.Add(new InferredWheel(pivot, wheel, body));
         }
     }
 

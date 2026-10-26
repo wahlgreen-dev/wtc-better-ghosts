@@ -10,8 +10,7 @@ namespace BetterGhosts;
 public class PartRecording
 {
     private const string Magic = "BGH";
-    private const byte FormatVersion = 3;
-    private const byte FormatVersionWithoutWheels = 2;
+    private const byte FormatVersion = 2;
     private const int BitsPerValue = 10;
     private const ulong ValueMask = (1UL << BitsPerValue) - 1;
     private const float ValueSteps = ValueMask;
@@ -21,16 +20,13 @@ public class PartRecording
     public readonly string[] PartPaths;
     public readonly List<Vector3[]> Positions = new();
     public readonly List<Quaternion[]> Rotations = new();
-    public readonly WheelSpin[] Wheels;
-    public readonly List<float[]> WheelAngles = new();
 
     public int SampleCount => Positions.Count;
 
-    public PartRecording(string vehicleName, string[] partPaths, WheelSpin[] wheels)
+    public PartRecording(string vehicleName, string[] partPaths)
     {
         VehicleName = vehicleName;
         PartPaths = partPaths;
-        Wheels = wheels;
     }
 
     public bool Matches(VehicleSetup setup)
@@ -38,18 +34,16 @@ public class PartRecording
         return VehicleName == setup.VehicleName && PartPaths.SequenceEqual(setup.PartPaths);
     }
 
-    public void Add(Vector3[] positions, Quaternion[] rotations, float[] wheelAngles)
+    public void Add(Vector3[] positions, Quaternion[] rotations)
     {
         Positions.Add(positions);
         Rotations.Add(rotations);
-        WheelAngles.Add(wheelAngles);
     }
 
     public void Clear()
     {
         Positions.Clear();
         Rotations.Clear();
-        WheelAngles.Clear();
     }
 
     public void Save(string path)
@@ -65,9 +59,6 @@ public class PartRecording
         writer.Write(PartPaths.Length);
         foreach (string partPath in PartPaths)
             writer.Write(partPath);
-        writer.Write(Wheels.Length);
-        foreach (WheelSpin wheel in Wheels)
-            WriteWheel(writer, wheel);
         writer.Write(SampleCount);
 
         Vector3[] mins = new Vector3[PartPaths.Length];
@@ -83,8 +74,6 @@ public class PartRecording
         {
             for (int part = 0; part < PartPaths.Length; part++)
                 writer.Write(PackPosition(Positions[sample][part], mins[part], ranges[part]) | PackRotation(Rotations[sample][part]) << 30);
-            foreach (float angle in WheelAngles[sample])
-                writer.Write(angle);
         }
     }
 
@@ -96,17 +85,13 @@ public class PartRecording
 
         if (Encoding.ASCII.GetString(reader.ReadBytes(Magic.Length)) != Magic)
             return null;
-        byte version = reader.ReadByte();
-        if (version != FormatVersion && version != FormatVersionWithoutWheels)
+        if (reader.ReadByte() != FormatVersion)
             return null;
 
         string vehicleName = reader.ReadString();
         string[] partPaths = new string[reader.ReadInt32()];
         for (int part = 0; part < partPaths.Length; part++)
             partPaths[part] = reader.ReadString();
-        WheelSpin[] wheels = new WheelSpin[version == FormatVersion ? reader.ReadInt32() : 0];
-        for (int wheel = 0; wheel < wheels.Length; wheel++)
-            wheels[wheel] = ReadWheel(reader);
         int sampleCount = reader.ReadInt32();
 
         Vector3[] mins = new Vector3[partPaths.Length];
@@ -117,7 +102,7 @@ public class PartRecording
             ranges[part] = ReadVector(reader);
         }
 
-        PartRecording recording = new PartRecording(vehicleName, partPaths, wheels);
+        PartRecording recording = new PartRecording(vehicleName, partPaths);
         for (int sample = 0; sample < sampleCount; sample++)
         {
             Vector3[] positions = new Vector3[partPaths.Length];
@@ -128,36 +113,9 @@ public class PartRecording
                 positions[part] = UnpackPosition(packed, mins[part], ranges[part]);
                 rotations[part] = UnpackRotation(packed >> 30);
             }
-
-            float[] wheelAngles = new float[wheels.Length];
-            for (int wheel = 0; wheel < wheels.Length; wheel++)
-                wheelAngles[wheel] = reader.ReadSingle();
-            recording.Add(positions, rotations, wheelAngles);
+            recording.Add(positions, rotations);
         }
         return recording;
-    }
-
-    private static void WriteWheel(BinaryWriter writer, WheelSpin wheel)
-    {
-        writer.Write(wheel.Path);
-        WriteVector(writer, wheel.Axis);
-        WriteVector(writer, wheel.Anchor);
-        WriteVector(writer, wheel.ReferencePosition);
-        Quaternion rotation = wheel.ReferenceRotation;
-        writer.Write(rotation.x);
-        writer.Write(rotation.y);
-        writer.Write(rotation.z);
-        writer.Write(rotation.w);
-    }
-
-    private static WheelSpin ReadWheel(BinaryReader reader)
-    {
-        string path = reader.ReadString();
-        Vector3 axis = ReadVector(reader);
-        Vector3 anchor = ReadVector(reader);
-        Vector3 referencePosition = ReadVector(reader);
-        Quaternion referenceRotation = new Quaternion(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-        return new WheelSpin(path, axis, anchor, referencePosition, referenceRotation);
     }
 
     private (Vector3 min, Vector3 range) PositionBounds(int part)
