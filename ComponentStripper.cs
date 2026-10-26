@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -15,7 +14,7 @@ public static class ComponentStripper
         for (int pass = 0; pass < MaxPasses; pass++)
         {
             bool removed = false;
-            Il2CppArrayBase<Component> components = root.GetComponentsInChildren<Component>(true);
+            var components = root.GetComponentsInChildren<Component>(true);
             for (int i = 0; i < components.Length; i++)
             {
                 Component component = components[i];

@@ -1,4 +1,3 @@
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 
 namespace BetterGhosts;
@@ -34,7 +33,7 @@ public static class TransformPaths
 
     public static bool HasComponentNamed(Transform transform, string typeName)
     {
-        Il2CppArrayBase<Component> components = transform.GetComponents<Component>();
+        var components = transform.GetComponents<Component>();
         for (int i = 0; i < components.Length; i++)
         {
             if (components[i] != null && components[i].GetIl2CppType().Name == typeName)

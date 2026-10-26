@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Vector2List = Il2CppSystem.Collections.Generic.List<UnityEngine.Vector2>;
 
 namespace BetterGhosts;
 
@@ -52,9 +53,9 @@ public class GhostPalette
         return stream;
     }
 
-    public static Il2CppSystem.Collections.Generic.List<Vector2> Slots(int vertexCount)
+    public static Vector2List Slots(int vertexCount)
     {
-        var slots = new Il2CppSystem.Collections.Generic.List<Vector2>(vertexCount);
+        Vector2List slots = new Vector2List(vertexCount);
         Vector2 slot = new Vector2(GhostBodySlot, 0f);
         for (int i = 0; i < vertexCount; i++)
             slots.Add(slot);

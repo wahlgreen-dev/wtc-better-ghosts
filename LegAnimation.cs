@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Il2Cpp;
-using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using UnityEngine;
 
 namespace BetterGhosts;
@@ -48,7 +47,7 @@ public class LegAnimation
     {
         this.sourceAnimator = sourceAnimator;
 
-        Il2CppArrayBase<TransferVelocityToAnimationProperty> transferComponents = vehicle.GetComponentsInChildren<TransferVelocityToAnimationProperty>(true);
+        var transferComponents = vehicle.GetComponentsInChildren<TransferVelocityToAnimationProperty>(true);
         for (int i = 0; i < transferComponents.Length; i++)
         {
             TransferVelocityToAnimationProperty component = transferComponents[i];

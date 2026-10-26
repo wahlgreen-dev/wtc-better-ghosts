@@ -10,6 +10,7 @@ public class VehicleSetup
     public readonly string VehicleName;
     public readonly string[] PartPaths;
     public readonly Animator LegAnimator;
+    public readonly Transform PhysicsRig;
 
     public VehicleSetup(string vehicleName, params string[] partPaths)
     {
@@ -23,6 +24,15 @@ public class VehicleSetup
         PartPaths = Array.Empty<string>();
         LegAnimator = legAnimator;
     }
+
+    public VehicleSetup(string vehicleName, Transform physicsRig)
+    {
+        VehicleName = vehicleName;
+        PartPaths = Array.Empty<string>();
+        PhysicsRig = physicsRig;
+    }
+
+    public Transform RigRoot => LegAnimator != null ? LegAnimator.transform : PhysicsRig;
 }
 
 public static class VehicleSetups
@@ -41,10 +51,27 @@ public static class VehicleSetups
             return setup;
 
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
-        if (legs == null)
+        if (legs != null)
+            return new VehicleSetup(name, legs.animator);
+
+        Transform physicsRig = FindPhysicsRig(vehicle);
+        if (physicsRig != null)
+            return new VehicleSetup(name, physicsRig);
+
+        return new VehicleSetup(name);
+    }
+
+    private static Transform FindPhysicsRig(Transform vehicle)
+    {
+        FrogCar frog = vehicle.GetComponentInChildren<FrogCar>(true);
+        if (frog == null || frog.jumpVisualRigidBodies == null || frog.jumpVisualRigidBodies.Count == 0)
             return null;
 
-        return new VehicleSetup(name, legs.animator);
+        Animator rigAnimator = frog.jumpVisualRigidBodies[0].GetComponentInParent<Animator>(true);
+        if (rigAnimator == null)
+            return null;
+
+        return rigAnimator.transform;
     }
 
     private static void Add(VehicleSetup setup)
