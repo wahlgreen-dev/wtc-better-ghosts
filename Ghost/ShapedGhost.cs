@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Il2Cpp;
 using Il2CppSpeed.GhostCar;
 using UnityEngine;
 using UnityEngine.Rendering;
+using Object = UnityEngine.Object;
+using TransformList = Il2CppSystem.Collections.Generic.List<UnityEngine.Transform>;
 
 namespace BetterGhosts;
 
@@ -29,6 +32,9 @@ public class ShapedGhost
     private readonly UmbrellaAnimation umbrella;
     private readonly RiderPose riderPose;
     private readonly HamsterWheel hamsterWheel;
+    private readonly List<SteeredPart> steeredParts = new();
+    private readonly List<LeaningPart> leaningParts = new();
+    private HotWheels hotWheels;
     private readonly SwingingPivot swingingPivot;
     private readonly List<float> bodyTimes = new();
     private readonly List<Vector3> bodyPositions = new();
@@ -81,6 +87,7 @@ public class ShapedGhost
 
         CreateSpinnerPivots(vehicle, body, rigRoot, layer);
         hamsterWheel = CreateHamsterWheel(vehicle, body, layer);
+        CreateDrivenParts(vehicle, rigRoot, source => CreateAnchoredPivot(source, body, layer), false);
         CopyRenderers(vehicle, body, rigRoot, layer);
         CopyPowerEffects(vehicle, body, rigRoot);
 
@@ -92,12 +99,18 @@ public class ShapedGhost
         }
 
         if (rigRoot != null)
-            rig = new(rigRoot, rider != null ? rider : body, rigParent, palette, power, physicsContainer != null ? physicsContainer.transform : null);
+        {
+            Transform rigAnchor = rider;
+            if (rider == null)
+                FindPlacement(rigRoot, body, out rigAnchor, out rigParent);
+            rig = new(rigRoot, rigAnchor, rigParent, palette, power, physicsContainer != null ? physicsContainer.transform : null);
+        }
         if (rigRoot != null)
         {
             SetUpAnimator(vehicle, rigRoot, setup.LegAnimator);
             umbrella = UmbrellaAnimation.Find(vehicle, rigRoot, rig);
             FindRigSpinners(vehicle, rigRoot);
+            CreateDrivenParts(vehicle, rigRoot, rig.CopyOf, true);
         }
 
         if (setup.SwingingContainer != null)
@@ -146,6 +159,7 @@ public class ShapedGhost
 
         bool pressed = blend < 0.5f ? actionPressed[from] : actionPressed[to];
         umbrella?.Update(pressed, deltaTime);
+        UpdateDrivenParts(from, to, blend, velocity, pressed, deltaTime);
 
         if (rig != null)
             UpdateRig(from, to, blend, deltaTime);
@@ -252,6 +266,73 @@ public class ShapedGhost
         pivot.SetParent(parent, false);
         RelativePose.Copy(pivot, source, anchor);
         return pivot;
+    }
+
+    private void CreateDrivenParts(Transform vehicle, Transform rigRoot, Func<Transform, Transform> pivotFor, bool inRig)
+    {
+        var leaners = vehicle.GetComponentsInChildren<LeanWithSkid>(false);
+        for (int i = 0; i < leaners.Length; i++)
+        {
+            Transform pivot = DrivenPivot(leaners[i].transform, rigRoot, pivotFor, inRig);
+            if (pivot != null)
+                leaningParts.Add(new LeaningPart(pivot, leaners[i]));
+        }
+
+        var steerers = vehicle.GetComponentsInChildren<RotateWithInput>(false);
+        for (int i = 0; i < steerers.Length; i++)
+        {
+            Transform pivot = DrivenPivot(steerers[i].transform, rigRoot, pivotFor, inRig);
+            if (pivot != null)
+                steeredParts.Add(new SteeredPart(pivot, steerers[i]));
+        }
+
+        HotWheelsController controller = vehicle.GetComponentInChildren<HotWheelsController>(true);
+        if (controller == null)
+            return;
+
+        hotWheels ??= new HotWheels(controller);
+        AddHotWheels(controller.wheelSpinHandlesFront, controller.wheelRadiusFront, rigRoot, pivotFor, inRig);
+        AddHotWheels(controller.wheelSpinHandlesBack, controller.wheelRadiusBack, rigRoot, pivotFor, inRig);
+    }
+
+    private void AddHotWheels(TransformList handles, float radius, Transform rigRoot, Func<Transform, Transform> pivotFor, bool inRig)
+    {
+        if (handles == null)
+            return;
+
+        for (int i = 0; i < handles.Count; i++)
+        {
+            Transform pivot = handles[i] != null ? DrivenPivot(handles[i], rigRoot, pivotFor, inRig) : null;
+            if (pivot != null)
+                hotWheels.Add(pivot, radius);
+        }
+    }
+
+    private static Transform DrivenPivot(Transform source, Transform rigRoot, Func<Transform, Transform> pivotFor, bool inRig)
+    {
+        bool sourceInRig = rigRoot != null && source.IsChildOf(rigRoot);
+        return sourceInRig == inRig ? pivotFor(source) : null;
+    }
+
+    private Transform CreateAnchoredPivot(Transform source, Transform body, int layer)
+    {
+        FindPlacement(source, body, out Transform anchor, out Transform parent);
+        Transform pivot = CreatePivot(source, anchor, parent, layer);
+        anchorSources.Add(source);
+        anchorPivots.Add(pivot);
+        return pivot;
+    }
+
+    private void UpdateDrivenParts(int from, int to, float blend, Vector3 velocity, bool pressed, float deltaTime)
+    {
+        float steering = Mathf.Lerp(bodyInputs[from], bodyInputs[to], blend);
+        float skid = Mathf.Lerp(bodySkids[from], bodySkids[to], blend);
+        bool grounded = blend < 0.5f ? bodyGrounded[from] : bodyGrounded[to];
+        foreach (SteeredPart part in steeredParts)
+            part.Update(steering, deltaTime);
+        foreach (LeaningPart part in leaningParts)
+            part.Update(skid, steering, grounded, deltaTime);
+        hotWheels?.Update(velocity, root.transform.forward, pressed, deltaTime);
     }
 
     private HamsterWheel CreateHamsterWheel(Transform vehicle, Transform body, int layer)
