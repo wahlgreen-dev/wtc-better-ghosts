@@ -21,6 +21,7 @@ public class AnimatorDriver
     private const float GroundRayLength = 50f;
     private const string PumpParamName = "Pump";
     private const string HorizontalParamName = "Horizontal";
+    private const string PedalParamName = "Velocity";
 
     private class VelocityTransfer
     {
@@ -48,6 +49,8 @@ public class AnimatorDriver
     private readonly int landedHash;
     private readonly int pumpHash;
     private readonly int horizontalHash;
+    private readonly int pedalHash;
+    private readonly float maxPedalSpeed;
     private readonly float pumpInterval;
     private float pumpCooldown;
     private float groundClearance;
@@ -108,6 +111,13 @@ public class AnimatorDriver
             pumpInterval = skater.pumpDuration;
         }
 
+        CarOnBikeController bike = vehicle.GetComponentInChildren<CarOnBikeController>(true);
+        if (bike != null && bike.animator == sourceAnimator)
+        {
+            pedalHash = Animator.StringToHash(PedalParamName);
+            maxPedalSpeed = bike.maxPedalAnimationSpeed;
+        }
+
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
         if (legs == null || legs.animator != sourceAnimator)
             return;
@@ -134,6 +144,9 @@ public class AnimatorDriver
             animator.SetFloat(legSpeedMultiplierHash, sourceAnimator.GetFloat(legSpeedMultiplierHash));
             animator.SetFloat(skidHash, motion.Skid);
         }
+
+        if (pedalHash != 0)
+            animator.SetFloat(pedalHash, motion.IsGrounded ? Mathf.Min(motion.Velocity.magnitude, maxPedalSpeed) : 0f);
 
         if (pumpHash != 0)
             DrivePump(animator, motion, deltaTime);

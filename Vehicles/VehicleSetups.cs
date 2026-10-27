@@ -117,13 +117,6 @@ public static class VehicleSetups
         if (skater != null && skater.animator != null)
             return new VehicleSetup(name, skater.animator);
 
-        if (HamsterWheel.Find(vehicle) != null)
-        {
-            TransferVelocityToAnimationProperty runner = vehicle.GetComponentInChildren<TransferVelocityToAnimationProperty>(true);
-            if (runner != null && runner.animator != null)
-                return new VehicleSetup(name, runner.animator);
-        }
-
         DoubleSwingers swingers = vehicle.GetComponentInChildren<DoubleSwingers>(true);
         if (swingers != null && swingers.childContainer != null)
             return VehicleSetup.WithSwingingContainer(name, swingers.childContainer);
@@ -138,6 +131,10 @@ public static class VehicleSetups
 
         if (TransformPaths.Find(vehicle, RiderName) != null)
             return VehicleSetup.WithRider(name, RiderName);
+
+        TransferVelocityToAnimationProperty velocityAnimation = vehicle.GetComponentInChildren<TransferVelocityToAnimationProperty>(true);
+        if (velocityAnimation != null && velocityAnimation.animator != null)
+            return new VehicleSetup(name, velocityAnimation.animator);
 
         return new VehicleSetup(name);
     }
