@@ -76,7 +76,7 @@ public class ShapedGhost
             riderPose = new RiderPose(rigParent, rider, body);
         }
 
-        if (setup.SpinWheels)
+        if (parts.Length == 0)
             CreateInferredWheels(vehicle, body, rigRoot, layer);
 
         CreateSpinnerPivots(vehicle, body, rigRoot, layer);

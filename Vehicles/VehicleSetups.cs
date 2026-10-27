@@ -11,7 +11,6 @@ public class VehicleSetup
     public readonly string[] PartPaths;
     public readonly Animator LegAnimator;
     public readonly Transform PhysicsRig;
-    public readonly bool SpinWheels;
     public readonly string RiderPath;
     public readonly Transform SwingingContainer;
     public readonly string FramePath = "";
@@ -55,13 +54,6 @@ public class VehicleSetup
         SwingingContainer = swingingContainer;
     }
 
-    public VehicleSetup(string vehicleName, bool spinWheels)
-    {
-        VehicleName = vehicleName;
-        PartPaths = Array.Empty<string>();
-        SpinWheels = spinWheels;
-    }
-
     public VehicleSetup(string vehicleName, params string[] partPaths)
     {
         VehicleName = vehicleName;
@@ -99,8 +91,6 @@ public static class VehicleSetups
     static VehicleSetups()
     {
         Add(new("Car with giraffe wheels Variant", "Rigidbody/Visuals/Components/Lamppost wheel", "Rigidbody/Visuals/Components/Lamppost wheel (2)"));
-        Add(new("Car with keyboards Variant", spinWheels: true));
-        Add(new("Car with keyboards ASMR Variant", spinWheels: true));
     }
 
     public static VehicleSetup Find(Transform vehicle)
