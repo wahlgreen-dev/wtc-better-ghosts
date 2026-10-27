@@ -19,7 +19,7 @@ public class GhostRecorder
         this.body = body;
         this.parts = parts;
         this.goalObjects = goalObjects;
-        Recording = new PartRecording(setup.VehicleName, setup.PartPaths, GoalObjects.Names(goalObjects));
+        Recording = new PartRecording(setup.VehicleName, setup.FramePath, setup.PartsRotateOnly, setup.PartPaths, GoalObjects.Names(goalObjects));
     }
 
     public void Update()
@@ -54,6 +54,6 @@ public class GhostRecorder
         Vector3[] goalPositions = new Vector3[goalObjects.Length];
         for (int i = 0; i < goalObjects.Length; i++)
             goalPositions[i] = goalObjects[i].position;
-        Recording.Add(positions, rotations, goalPositions);
+        Recording.Add(body.position, body.rotation, positions, rotations, goalPositions);
     }
 }

@@ -14,12 +14,27 @@ public class VehicleSetup
     public readonly bool SpinWheels;
     public readonly string RiderPath;
     public readonly Transform SwingingContainer;
+    public readonly string FramePath = "";
+    public readonly bool PartsRotateOnly;
 
     private VehicleSetup(string vehicleName, string riderPath)
     {
         VehicleName = vehicleName;
         PartPaths = Array.Empty<string>();
         RiderPath = riderPath;
+    }
+
+    private VehicleSetup(string vehicleName, string framePath, string[] rotatingPartPaths)
+    {
+        VehicleName = vehicleName;
+        FramePath = framePath;
+        PartPaths = rotatingPartPaths;
+        PartsRotateOnly = true;
+    }
+
+    public static VehicleSetup WithFrame(string vehicleName, string framePath, string[] rotatingPartPaths)
+    {
+        return new VehicleSetup(vehicleName, framePath, rotatingPartPaths);
     }
 
     public static VehicleSetup WithRider(string vehicleName, string riderPath)
@@ -106,6 +121,10 @@ public static class VehicleSetups
         if (swingers != null && swingers.childContainer != null)
             return VehicleSetup.WithSwingingContainer(name, swingers.childContainer);
 
+        StiltsController stilts = vehicle.GetComponentInChildren<StiltsController>(true);
+        if (stilts != null)
+            return VehicleSetup.WithFrame(name, TransformPaths.RelativePath(stilts.root.transform, vehicle), StiltPaths(vehicle, stilts));
+
         Transform physicsRig = FindPhysicsRig(vehicle);
         if (physicsRig != null)
             return new VehicleSetup(name, physicsRig);
@@ -114,6 +133,14 @@ public static class VehicleSetups
             return VehicleSetup.WithRider(name, RiderName);
 
         return new VehicleSetup(name);
+    }
+
+    private static string[] StiltPaths(Transform vehicle, StiltsController controller)
+    {
+        List<string> paths = new();
+        for (int i = 0; i < controller.stilts.Count; i++)
+            paths.Add(TransformPaths.RelativePath(controller.stilts[i].Rigid.transform, vehicle));
+        return paths.ToArray();
     }
 
     private static Transform FindPhysicsRig(Transform vehicle)

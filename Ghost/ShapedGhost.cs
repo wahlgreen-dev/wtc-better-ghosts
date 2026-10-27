@@ -114,8 +114,16 @@ public class ShapedGhost
     public void Update(float time, float deltaTime)
     {
         bodyCursor.Seek(time, out int from, out int to, out float blend);
-        root.transform.position = Vector3.Lerp(bodyPositions[from], bodyPositions[to], blend);
-        root.transform.rotation = Quaternion.Slerp(bodyRotations[from], bodyRotations[to], blend);
+        if (recording != null && recording.HasFrame)
+        {
+            root.transform.position = Vector3.Lerp(recording.FramePositions[from], recording.FramePositions[to], blend);
+            root.transform.rotation = Quaternion.Slerp(recording.FrameRotations[from], recording.FrameRotations[to], blend);
+        }
+        else
+        {
+            root.transform.position = Vector3.Lerp(bodyPositions[from], bodyPositions[to], blend);
+            root.transform.rotation = Quaternion.Slerp(bodyRotations[from], bodyRotations[to], blend);
+        }
         swingingPivot?.Update(root.transform, from, to, blend);
 
         if (physicsContainer != null)
@@ -171,7 +179,8 @@ public class ShapedGhost
     {
         for (int i = 0; i < partPivots.Length; i++)
         {
-            partPivots[i].localPosition = Vector3.Lerp(recording.Positions[from][i], recording.Positions[to][i], blend);
+            if (!recording.PartsRotateOnly)
+                partPivots[i].localPosition = Vector3.Lerp(recording.Positions[from][i], recording.Positions[to][i], blend);
             partPivots[i].localRotation = Quaternion.Slerp(recording.Rotations[from][i], recording.Rotations[to][i], blend);
         }
     }

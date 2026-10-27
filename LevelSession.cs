@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using Il2CppSpeed.GhostCar;
 using Il2CppSpeed.Level;
 using MelonLoader;
@@ -17,6 +18,7 @@ public class LevelSession
     private VehicleSetup setup;
     private Transform vehicle;
     private Transform body;
+    private Transform frame;
     private Transform[] parts;
     private Transform[] goalObjects;
     private GhostRecorder recorder;
@@ -116,7 +118,8 @@ public class LevelSession
             return;
 
         vehicle = playerVehicle.transform;
-        body = playerVehicle._mainRigidbody.transform;
+        frame = foundSetup.FramePath.Length > 0 ? TransformPaths.Find(vehicle, foundSetup.FramePath) : null;
+        body = frame != null ? frame : playerVehicle._mainRigidbody.transform;
         parts = new Transform[foundSetup.PartPaths.Length];
         for (int i = 0; i < parts.Length; i++)
         {
@@ -136,6 +139,8 @@ public class LevelSession
 
     private bool GhostDataReady => manager.ghostTransform != null && manager.existingGhostData != null;
 
+    private bool PartsActive => frame == null || body.gameObject.activeInHierarchy && parts.All(part => part.gameObject.activeInHierarchy);
+
     private void WarmUp()
     {
         if (!GhostDataReady)
@@ -149,7 +154,7 @@ public class LevelSession
 
     private void TryCreateGhost()
     {
-        if (!GhostDataReady)
+        if (!GhostDataReady || !PartsActive)
             return;
 
         ghostAttempted = true;

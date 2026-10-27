@@ -10,37 +10,48 @@ namespace BetterGhosts;
 public class PartRecording
 {
     private const string Magic = "BGH";
-    private const byte FormatVersion = 3;
+    private const byte FormatVersion = 4;
+    private const byte FormatVersionWithoutFrame = 3;
     private const byte FormatVersionWithoutGoalObjects = 2;
     private const int BitsPerValue = 10;
     private const ulong ValueMask = (1UL << BitsPerValue) - 1;
     private const float ValueSteps = ValueMask;
-    private const float GoalPositionSteps = ushort.MaxValue;
+    private const float WidePositionSteps = ushort.MaxValue;
     private const float SmallestThreeLimit = 0.70710678f;
 
     public readonly string VehicleName;
+    public readonly string FramePath;
+    public readonly bool PartsRotateOnly;
     public readonly string[] PartPaths;
     public readonly string[] GoalObjectNames;
+    public readonly List<Vector3> FramePositions = new();
+    public readonly List<Quaternion> FrameRotations = new();
     public readonly List<Vector3[]> Positions = new();
     public readonly List<Quaternion[]> Rotations = new();
     public readonly List<Vector3[]> GoalPositions = new();
 
     public int SampleCount => Positions.Count;
 
-    public PartRecording(string vehicleName, string[] partPaths, string[] goalObjectNames)
+    public bool HasFrame => FramePath.Length > 0;
+
+    public PartRecording(string vehicleName, string framePath, bool partsRotateOnly, string[] partPaths, string[] goalObjectNames)
     {
         VehicleName = vehicleName;
+        FramePath = framePath;
+        PartsRotateOnly = partsRotateOnly;
         PartPaths = partPaths;
         GoalObjectNames = goalObjectNames;
     }
 
     public bool Matches(VehicleSetup setup)
     {
-        return VehicleName == setup.VehicleName && PartPaths.SequenceEqual(setup.PartPaths);
+        return VehicleName == setup.VehicleName && FramePath == setup.FramePath && PartsRotateOnly == setup.PartsRotateOnly && PartPaths.SequenceEqual(setup.PartPaths);
     }
 
-    public void Add(Vector3[] positions, Quaternion[] rotations, Vector3[] goalPositions)
+    public void Add(Vector3 framePosition, Quaternion frameRotation, Vector3[] positions, Quaternion[] rotations, Vector3[] goalPositions)
     {
+        FramePositions.Add(framePosition);
+        FrameRotations.Add(frameRotation);
         Positions.Add(positions);
         Rotations.Add(rotations);
         GoalPositions.Add(goalPositions);
@@ -48,6 +59,8 @@ public class PartRecording
 
     public void Clear()
     {
+        FramePositions.Clear();
+        FrameRotations.Clear();
         Positions.Clear();
         Rotations.Clear();
         GoalPositions.Clear();
@@ -63,6 +76,8 @@ public class PartRecording
         writer.Write(Encoding.ASCII.GetBytes(Magic));
         writer.Write(FormatVersion);
         writer.Write(VehicleName);
+        writer.Write(FramePath);
+        writer.Write(PartsRotateOnly);
         writer.Write(PartPaths.Length);
         foreach (string partPath in PartPaths)
             writer.Write(partPath);
@@ -73,11 +88,14 @@ public class PartRecording
 
         Vector3[] mins = new Vector3[PartPaths.Length];
         Vector3[] ranges = new Vector3[PartPaths.Length];
-        for (int part = 0; part < PartPaths.Length; part++)
+        if (!PartsRotateOnly)
         {
-            (mins[part], ranges[part]) = Bounds(Positions, part);
-            WriteVector(writer, mins[part]);
-            WriteVector(writer, ranges[part]);
+            for (int part = 0; part < PartPaths.Length; part++)
+            {
+                (mins[part], ranges[part]) = Bounds(Positions, part);
+                WriteVector(writer, mins[part]);
+                WriteVector(writer, ranges[part]);
+            }
         }
 
         Vector3[] goalMins = new Vector3[GoalObjectNames.Length];
@@ -89,12 +107,35 @@ public class PartRecording
             WriteVector(writer, goalRanges[goal]);
         }
 
+        Vector3 frameMin = Vector3.zero;
+        Vector3 frameRange = Vector3.zero;
+        if (HasFrame)
+        {
+            (frameMin, frameRange) = Bounds(FramePositions);
+            WriteVector(writer, frameMin);
+            WriteVector(writer, frameRange);
+        }
+
+        WidePosition previousFrame = default;
         for (int sample = 0; sample < SampleCount; sample++)
         {
+            if (HasFrame)
+            {
+                WidePosition frame = WidePosition.Quantize(FramePositions[sample], frameMin, frameRange);
+                frame.WriteDelta(writer, previousFrame);
+                previousFrame = frame;
+                writer.Write((uint)PackRotation(FrameRotations[sample]));
+            }
+
             for (int part = 0; part < PartPaths.Length; part++)
-                writer.Write(PackPosition(Positions[sample][part], mins[part], ranges[part]) | PackRotation(Rotations[sample][part]) << 30);
+            {
+                if (PartsRotateOnly)
+                    writer.Write((uint)PackRotation(Rotations[sample][part]));
+                else
+                    writer.Write(PackPosition(Positions[sample][part], mins[part], ranges[part]) | PackRotation(Rotations[sample][part]) << 30);
+            }
             for (int goal = 0; goal < GoalObjectNames.Length; goal++)
-                WriteGoalPosition(writer, GoalPositions[sample][goal], goalMins[goal], goalRanges[goal]);
+                WidePosition.Quantize(GoalPositions[sample][goal], goalMins[goal], goalRanges[goal]).Write(writer);
         }
     }
 
@@ -107,24 +148,29 @@ public class PartRecording
         if (Encoding.ASCII.GetString(reader.ReadBytes(Magic.Length)) != Magic)
             return null;
         byte version = reader.ReadByte();
-        if (version != FormatVersion && version != FormatVersionWithoutGoalObjects)
+        if (version != FormatVersion && version != FormatVersionWithoutFrame && version != FormatVersionWithoutGoalObjects)
             return null;
 
         string vehicleName = reader.ReadString();
+        string framePath = version == FormatVersion ? reader.ReadString() : "";
+        bool partsRotateOnly = version == FormatVersion && reader.ReadBoolean();
         string[] partPaths = new string[reader.ReadInt32()];
         for (int part = 0; part < partPaths.Length; part++)
             partPaths[part] = reader.ReadString();
-        string[] goalObjectNames = new string[version == FormatVersion ? reader.ReadInt32() : 0];
+        string[] goalObjectNames = new string[version == FormatVersionWithoutGoalObjects ? 0 : reader.ReadInt32()];
         for (int goal = 0; goal < goalObjectNames.Length; goal++)
             goalObjectNames[goal] = reader.ReadString();
         int sampleCount = reader.ReadInt32();
 
         Vector3[] mins = new Vector3[partPaths.Length];
         Vector3[] ranges = new Vector3[partPaths.Length];
-        for (int part = 0; part < partPaths.Length; part++)
+        if (!partsRotateOnly)
         {
-            mins[part] = ReadVector(reader);
-            ranges[part] = ReadVector(reader);
+            for (int part = 0; part < partPaths.Length; part++)
+            {
+                mins[part] = ReadVector(reader);
+                ranges[part] = ReadVector(reader);
+            }
         }
 
         Vector3[] goalMins = new Vector3[goalObjectNames.Length];
@@ -135,13 +181,32 @@ public class PartRecording
             goalRanges[goal] = ReadVector(reader);
         }
 
-        PartRecording recording = new PartRecording(vehicleName, partPaths, goalObjectNames);
+        PartRecording recording = new PartRecording(vehicleName, framePath, partsRotateOnly, partPaths, goalObjectNames);
+        Vector3 frameMin = recording.HasFrame ? ReadVector(reader) : Vector3.zero;
+        Vector3 frameRange = recording.HasFrame ? ReadVector(reader) : Vector3.zero;
+
+        WidePosition previousFrame = default;
         for (int sample = 0; sample < sampleCount; sample++)
         {
+            Vector3 framePosition = Vector3.zero;
+            Quaternion frameRotation = Quaternion.identity;
+            if (recording.HasFrame)
+            {
+                previousFrame = WidePosition.ReadDelta(reader, previousFrame);
+                framePosition = previousFrame.Dequantize(frameMin, frameRange);
+                frameRotation = UnpackRotation(reader.ReadUInt32());
+            }
+
             Vector3[] positions = new Vector3[partPaths.Length];
             Quaternion[] rotations = new Quaternion[partPaths.Length];
             for (int part = 0; part < partPaths.Length; part++)
             {
+                if (partsRotateOnly)
+                {
+                    rotations[part] = UnpackRotation(reader.ReadUInt32());
+                    continue;
+                }
+
                 ulong packed = reader.ReadUInt64();
                 positions[part] = UnpackPosition(packed, mins[part], ranges[part]);
                 rotations[part] = UnpackRotation(packed >> 30);
@@ -149,37 +214,78 @@ public class PartRecording
 
             Vector3[] goalPositions = new Vector3[goalObjectNames.Length];
             for (int goal = 0; goal < goalObjectNames.Length; goal++)
-                goalPositions[goal] = ReadGoalPosition(reader, goalMins[goal], goalRanges[goal]);
-            recording.Add(positions, rotations, goalPositions);
+                goalPositions[goal] = WidePosition.Read(reader).Dequantize(goalMins[goal], goalRanges[goal]);
+            recording.Add(framePosition, frameRotation, positions, rotations, goalPositions);
         }
         return recording;
     }
 
+    private struct WidePosition
+    {
+        private ushort x;
+        private ushort y;
+        private ushort z;
+
+        public static WidePosition Quantize(Vector3 position, Vector3 min, Vector3 range)
+        {
+            return new WidePosition
+            {
+                x = (ushort)PartRecording.Quantize(position.x, min.x, range.x, WidePositionSteps),
+                y = (ushort)PartRecording.Quantize(position.y, min.y, range.y, WidePositionSteps),
+                z = (ushort)PartRecording.Quantize(position.z, min.z, range.z, WidePositionSteps),
+            };
+        }
+
+        public Vector3 Dequantize(Vector3 min, Vector3 range)
+        {
+            return new Vector3(PartRecording.Dequantize(x, min.x, range.x, WidePositionSteps), PartRecording.Dequantize(y, min.y, range.y, WidePositionSteps), PartRecording.Dequantize(z, min.z, range.z, WidePositionSteps));
+        }
+
+        public void Write(BinaryWriter writer)
+        {
+            writer.Write(x);
+            writer.Write(y);
+            writer.Write(z);
+        }
+
+        public static WidePosition Read(BinaryReader reader)
+        {
+            return new WidePosition { x = reader.ReadUInt16(), y = reader.ReadUInt16(), z = reader.ReadUInt16() };
+        }
+
+        public void WriteDelta(BinaryWriter writer, WidePosition previous)
+        {
+            writer.Write((ushort)(x - previous.x));
+            writer.Write((ushort)(y - previous.y));
+            writer.Write((ushort)(z - previous.z));
+        }
+
+        public static WidePosition ReadDelta(BinaryReader reader, WidePosition previous)
+        {
+            return new WidePosition
+            {
+                x = (ushort)(previous.x + reader.ReadUInt16()),
+                y = (ushort)(previous.y + reader.ReadUInt16()),
+                z = (ushort)(previous.z + reader.ReadUInt16()),
+            };
+        }
+    }
+
     private (Vector3 min, Vector3 range) Bounds(List<Vector3[]> samples, int index)
     {
-        Vector3 min = samples[0][index];
+        return Bounds(samples.Select(sample => sample[index]).ToList());
+    }
+
+    private static (Vector3 min, Vector3 range) Bounds(List<Vector3> values)
+    {
+        Vector3 min = values[0];
         Vector3 max = min;
-        for (int sample = 1; sample < SampleCount; sample++)
+        for (int i = 1; i < values.Count; i++)
         {
-            min = Vector3.Min(min, samples[sample][index]);
-            max = Vector3.Max(max, samples[sample][index]);
+            min = Vector3.Min(min, values[i]);
+            max = Vector3.Max(max, values[i]);
         }
         return (min, max - min);
-    }
-
-    private static void WriteGoalPosition(BinaryWriter writer, Vector3 position, Vector3 min, Vector3 range)
-    {
-        writer.Write((ushort)Quantize(position.x, min.x, range.x, GoalPositionSteps));
-        writer.Write((ushort)Quantize(position.y, min.y, range.y, GoalPositionSteps));
-        writer.Write((ushort)Quantize(position.z, min.z, range.z, GoalPositionSteps));
-    }
-
-    private static Vector3 ReadGoalPosition(BinaryReader reader, Vector3 min, Vector3 range)
-    {
-        float x = Dequantize(reader.ReadUInt16(), min.x, range.x, GoalPositionSteps);
-        float y = Dequantize(reader.ReadUInt16(), min.y, range.y, GoalPositionSteps);
-        float z = Dequantize(reader.ReadUInt16(), min.z, range.z, GoalPositionSteps);
-        return new Vector3(x, y, z);
     }
 
     private static ulong PackPosition(Vector3 position, Vector3 min, Vector3 range)
