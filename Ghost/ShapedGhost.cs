@@ -28,6 +28,7 @@ public class ShapedGhost
     private Animator drivenAnimator;
     private readonly UmbrellaAnimation umbrella;
     private readonly RiderPose riderPose;
+    private readonly SwingingPivot swingingPivot;
     private readonly List<float> bodyTimes = new();
     private readonly List<Vector3> bodyPositions = new();
     private readonly List<Quaternion> bodyRotations = new();
@@ -96,6 +97,9 @@ public class ShapedGhost
             FindRigSpinners(vehicle, rigRoot);
         }
 
+        if (setup.SwingingContainer != null)
+            swingingPivot = new SwingingPivot(rig.Root, setup.SwingingContainer, rig.Animator, bodyTimes, bodyPositions, bodyRotations, bodyVelocities);
+
         if (this.recording != null && this.recording.GoalObjectNames.SequenceEqual(GoalObjects.Names(goalObjects)))
         {
             foreach (Transform goalObject in goalObjects)
@@ -111,6 +115,7 @@ public class ShapedGhost
         bodyCursor.Seek(time, out int from, out int to, out float blend);
         root.transform.position = Vector3.Lerp(bodyPositions[from], bodyPositions[to], blend);
         root.transform.rotation = Quaternion.Slerp(bodyRotations[from], bodyRotations[to], blend);
+        swingingPivot?.Update(root.transform, from, to, blend);
 
         if (physicsContainer != null)
             MatchPhysicsVisibility();

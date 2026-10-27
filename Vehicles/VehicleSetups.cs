@@ -13,6 +13,7 @@ public class VehicleSetup
     public readonly Transform PhysicsRig;
     public readonly bool SpinWheels;
     public readonly string RiderPath;
+    public readonly Transform SwingingContainer;
 
     private VehicleSetup(string vehicleName, string riderPath)
     {
@@ -24,6 +25,19 @@ public class VehicleSetup
     public static VehicleSetup WithRider(string vehicleName, string riderPath)
     {
         return new VehicleSetup(vehicleName, riderPath);
+    }
+
+    public static VehicleSetup WithSwingingContainer(string vehicleName, Transform container)
+    {
+        return new VehicleSetup(vehicleName, null, container);
+    }
+
+    private VehicleSetup(string vehicleName, Transform physicsRig, Transform swingingContainer)
+    {
+        VehicleName = vehicleName;
+        PartPaths = Array.Empty<string>();
+        PhysicsRig = physicsRig;
+        SwingingContainer = swingingContainer;
     }
 
     public VehicleSetup(string vehicleName, bool spinWheels)
@@ -46,14 +60,19 @@ public class VehicleSetup
         LegAnimator = legAnimator;
     }
 
-    public VehicleSetup(string vehicleName, Transform physicsRig)
+    public VehicleSetup(string vehicleName, Transform physicsRig) : this(vehicleName, physicsRig, null)
     {
-        VehicleName = vehicleName;
-        PartPaths = Array.Empty<string>();
-        PhysicsRig = physicsRig;
     }
 
-    public Transform RigRoot => LegAnimator != null ? LegAnimator.transform : PhysicsRig;
+    public Transform RigRoot
+    {
+        get
+        {
+            if (LegAnimator != null)
+                return LegAnimator.transform;
+            return PhysicsRig != null ? PhysicsRig : SwingingContainer;
+        }
+    }
 }
 
 public static class VehicleSetups
@@ -78,6 +97,10 @@ public static class VehicleSetups
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
         if (legs != null)
             return new VehicleSetup(name, legs.animator);
+
+        DoubleSwingers swingers = vehicle.GetComponentInChildren<DoubleSwingers>(true);
+        if (swingers != null && swingers.childContainer != null)
+            return VehicleSetup.WithSwingingContainer(name, swingers.childContainer);
 
         Transform physicsRig = FindPhysicsRig(vehicle);
         if (physicsRig != null)
