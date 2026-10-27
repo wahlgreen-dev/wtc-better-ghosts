@@ -98,6 +98,10 @@ public static class VehicleSetups
         if (legs != null)
             return new VehicleSetup(name, legs.animator);
 
+        CarWithLegsSkater skater = vehicle.GetComponentInChildren<CarWithLegsSkater>(true);
+        if (skater != null && skater.animator != null)
+            return new VehicleSetup(name, skater.animator);
+
         DoubleSwingers swingers = vehicle.GetComponentInChildren<DoubleSwingers>(true);
         if (swingers != null && swingers.childContainer != null)
             return VehicleSetup.WithSwingingContainer(name, swingers.childContainer);

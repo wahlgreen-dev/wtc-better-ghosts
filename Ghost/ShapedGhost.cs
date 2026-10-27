@@ -35,6 +35,7 @@ public class ShapedGhost
     private readonly List<Vector3> bodyVelocities = new();
     private readonly List<bool> bodyGrounded = new();
     private readonly List<float> bodySkids = new();
+    private readonly List<float> bodyInputs = new();
     private readonly List<bool> actionPressed = new();
     private readonly SampleCursor bodyCursor;
     private readonly List<Mesh> bakedMeshes = new();
@@ -209,6 +210,8 @@ public class ShapedGhost
             Velocity = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend),
             IsGrounded = blend < 0.5f ? bodyGrounded[from] : bodyGrounded[to],
             Skid = Mathf.Lerp(bodySkids[from], bodySkids[to], blend),
+            Steering = Mathf.Lerp(bodyInputs[from], bodyInputs[to], blend),
+            ActionPressed = blend < 0.5f ? actionPressed[from] : actionPressed[to],
         };
         animatorDriver.Drive(drivenAnimator, motion, deltaTime);
     }
@@ -225,6 +228,7 @@ public class ShapedGhost
             bodyVelocities.Add(sample.velocity);
             bodyGrounded.Add(sample.isGrounded);
             bodySkids.Add(sample.skid);
+            bodyInputs.Add(sample.input);
             actionPressed.Add(sample.actionPressed);
         }
     }

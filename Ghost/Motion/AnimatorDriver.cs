@@ -11,12 +11,16 @@ public struct GhostMotion
     public Vector3 Velocity;
     public bool IsGrounded;
     public float Skid;
+    public float Steering;
+    public bool ActionPressed;
 }
 
 public class AnimatorDriver
 {
     private const float GroundRayLift = 0.5f;
     private const float GroundRayLength = 50f;
+    private const string PumpParamName = "Pump";
+    private const string HorizontalParamName = "Horizontal";
 
     private class VelocityTransfer
     {
@@ -42,6 +46,10 @@ public class AnimatorDriver
     private readonly int legSpeedMultiplierHash;
     private readonly int skidHash;
     private readonly int landedHash;
+    private readonly int pumpHash;
+    private readonly int horizontalHash;
+    private readonly float pumpInterval;
+    private float pumpCooldown;
     private float groundClearance;
     private bool wasGrounded = true;
 
@@ -92,6 +100,14 @@ public class AnimatorDriver
                 fixedBools.Add((hash, setter.boolValue));
         }
 
+        CarWithLegsSkater skater = vehicle.GetComponentInChildren<CarWithLegsSkater>(true);
+        if (skater != null && skater.animator == sourceAnimator)
+        {
+            pumpHash = Animator.StringToHash(PumpParamName);
+            horizontalHash = Animator.StringToHash(HorizontalParamName);
+            pumpInterval = skater.pumpDuration;
+        }
+
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
         if (legs == null || legs.animator != sourceAnimator)
             return;
@@ -119,6 +135,9 @@ public class AnimatorDriver
             animator.SetFloat(skidHash, motion.Skid);
         }
 
+        if (pumpHash != 0)
+            DrivePump(animator, motion, deltaTime);
+
         if (motion.IsGrounded && !wasGrounded && landedHash != 0)
             animator.SetTrigger(landedHash);
         wasGrounded = motion.IsGrounded;
@@ -128,6 +147,17 @@ public class AnimatorDriver
 
         animator.SetFloat(groundDistanceHash, GroundDistance(motion));
         animator.SetBool(isGroundedHash, motion.IsGrounded);
+    }
+
+    private void DrivePump(Animator animator, GhostMotion motion, float deltaTime)
+    {
+        animator.SetFloat(horizontalHash, motion.Steering);
+        pumpCooldown -= deltaTime;
+        if (!motion.ActionPressed || pumpCooldown > 0f)
+            return;
+
+        animator.SetTrigger(pumpHash);
+        pumpCooldown = pumpInterval;
     }
 
     private float TransferValue(VelocityTransfer transfer, GhostMotion motion, float deltaTime)
