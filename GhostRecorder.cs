@@ -8,16 +8,18 @@ public class GhostRecorder
     private readonly GhostCarManager manager;
     private readonly Transform body;
     private readonly Transform[] parts;
+    private readonly Transform[] goalObjects;
     private int gameSamplesSeen;
 
     public PartRecording Recording { get; }
 
-    public GhostRecorder(GhostCarManager manager, Transform body, Transform[] parts, VehicleSetup setup)
+    public GhostRecorder(GhostCarManager manager, Transform body, Transform[] parts, Transform[] goalObjects, VehicleSetup setup)
     {
         this.manager = manager;
         this.body = body;
         this.parts = parts;
-        Recording = new PartRecording(setup.VehicleName, setup.PartPaths);
+        this.goalObjects = goalObjects;
+        Recording = new PartRecording(setup.VehicleName, setup.PartPaths, GoalObjects.Names(goalObjects));
     }
 
     public void Update()
@@ -48,6 +50,10 @@ public class GhostRecorder
             positions[i] = body.InverseTransformPoint(parts[i].position);
             rotations[i] = bodyRotationInverse * parts[i].rotation;
         }
-        Recording.Add(positions, rotations);
+
+        Vector3[] goalPositions = new Vector3[goalObjects.Length];
+        for (int i = 0; i < goalObjects.Length; i++)
+            goalPositions[i] = goalObjects[i].position;
+        Recording.Add(positions, rotations, goalPositions);
     }
 }

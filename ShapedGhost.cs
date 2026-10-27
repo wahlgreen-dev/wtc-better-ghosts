@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Il2Cpp;
 using Il2CppSpeed.GhostCar;
 using UnityEngine;
@@ -36,8 +37,9 @@ public class ShapedGhost
     private readonly List<bool> actionPressed = new();
     private readonly SampleCursor bodyCursor;
     private readonly List<Mesh> bakedMeshes = new();
+    private readonly List<GoalObjectGhost> goalObjectGhosts = new();
 
-    public ShapedGhost(GhostCarManager manager, Transform vehicle, Transform body, Transform[] parts, VehicleSetup setup, PartRecording recording)
+    public ShapedGhost(GhostCarManager manager, Transform vehicle, Transform body, Transform[] parts, Transform[] goalObjects, VehicleSetup setup, PartRecording recording)
     {
         Transform modelTransform = TransformPaths.FindDescendant(manager.ghostTransform, GenericModelName);
         Renderer ghostRenderer = TransformPaths.FindDescendant(modelTransform, GenericBodyName).GetComponent<Renderer>();
@@ -94,6 +96,12 @@ public class ShapedGhost
             FindRigSpinners(vehicle, rigRoot);
         }
 
+        if (this.recording != null && this.recording.GoalObjectNames.SequenceEqual(GoalObjects.Names(goalObjects)))
+        {
+            foreach (Transform goalObject in goalObjects)
+                goalObjectGhosts.Add(new GoalObjectGhost(goalObject, palette, layer));
+        }
+
         genericModel = modelTransform.gameObject;
         genericModel.SetActive(false);
     }
@@ -109,6 +117,7 @@ public class ShapedGhost
 
         if (recording != null)
             UpdateParts(from, to, blend);
+        UpdateGoalObjects(from, to, blend);
 
         Vector3 velocity = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend);
         float speed = velocity.magnitude;
@@ -136,6 +145,9 @@ public class ShapedGhost
         if (physicsContainer != null)
             Object.Destroy(physicsContainer);
 
+        foreach (GoalObjectGhost goalObjectGhost in goalObjectGhosts)
+            goalObjectGhost.Destroy();
+
         rig?.Destroy();
         palette.Destroy();
         foreach (Mesh mesh in bakedMeshes)
@@ -156,6 +168,13 @@ public class ShapedGhost
             partPivots[i].localPosition = Vector3.Lerp(recording.Positions[from][i], recording.Positions[to][i], blend);
             partPivots[i].localRotation = Quaternion.Slerp(recording.Rotations[from][i], recording.Rotations[to][i], blend);
         }
+    }
+
+    private void UpdateGoalObjects(int from, int to, float blend)
+    {
+        bool visible = root.activeInHierarchy;
+        for (int i = 0; i < goalObjectGhosts.Count; i++)
+            goalObjectGhosts[i].Update(Vector3.Lerp(recording.GoalPositions[from][i], recording.GoalPositions[to][i], blend), visible);
     }
 
     private void CreateInferredWheels(Transform vehicle, Transform body, Transform rigRoot, int layer)

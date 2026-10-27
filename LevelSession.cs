@@ -18,6 +18,7 @@ public class LevelSession
     private Transform vehicle;
     private Transform body;
     private Transform[] parts;
+    private Transform[] goalObjects;
     private GhostRecorder recorder;
     private ShapedGhost ghost;
     private bool ghostAttempted;
@@ -50,8 +51,8 @@ public class LevelSession
 
         gameplayStarted = true;
         levelWon = false;
-        if (parts.Length > 0)
-            recorder = new GhostRecorder(manager, body, parts, setup);
+        if (RecordsAnything)
+            recorder = new GhostRecorder(manager, body, parts, goalObjects, setup);
     }
 
     public void OnLevelWon()
@@ -127,8 +128,11 @@ public class LevelSession
             return;
         }
 
+        goalObjects = GoalObjects.Find(vehicle);
         setup = foundSetup;
     }
+
+    private bool RecordsAnything => parts.Length > 0 || goalObjects.Length > 0;
 
     private bool GhostDataReady => manager.ghostTransform != null && manager.existingGhostData != null;
 
@@ -138,7 +142,7 @@ public class LevelSession
             return;
 
         warmedUp = true;
-        ShapedGhost warmUpGhost = new ShapedGhost(manager, vehicle, body, parts, setup, null);
+        ShapedGhost warmUpGhost = new ShapedGhost(manager, vehicle, body, parts, goalObjects, setup, null);
         warmUpGhost.Update(0f, 0f);
         warmUpGhost.Destroy();
     }
@@ -149,8 +153,8 @@ public class LevelSession
             return;
 
         ghostAttempted = true;
-        PartRecording recording = parts.Length > 0 ? LoadRecording() : null;
-        ghost = new ShapedGhost(manager, vehicle, body, parts, setup, recording);
+        PartRecording recording = RecordsAnything ? LoadRecording() : null;
+        ghost = new ShapedGhost(manager, vehicle, body, parts, goalObjects, setup, recording);
     }
 
     private PartRecording LoadRecording()
@@ -176,6 +180,7 @@ public class LevelSession
         recorder = null;
         setup = null;
         parts = null;
+        goalObjects = null;
         manager = null;
         levelWon = false;
     }
