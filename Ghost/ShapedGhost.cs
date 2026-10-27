@@ -28,6 +28,7 @@ public class ShapedGhost
     private Animator drivenAnimator;
     private readonly UmbrellaAnimation umbrella;
     private readonly RiderPose riderPose;
+    private readonly HamsterWheel hamsterWheel;
     private readonly SwingingPivot swingingPivot;
     private readonly List<float> bodyTimes = new();
     private readonly List<Vector3> bodyPositions = new();
@@ -79,6 +80,7 @@ public class ShapedGhost
             CreateInferredWheels(vehicle, body, rigRoot, layer);
 
         CreateSpinnerPivots(vehicle, body, rigRoot, layer);
+        hamsterWheel = CreateHamsterWheel(vehicle, body, layer);
         CopyRenderers(vehicle, body, rigRoot, layer);
         CopyPowerEffects(vehicle, body, rigRoot);
 
@@ -138,6 +140,7 @@ public class ShapedGhost
         riderPose?.Update(root.transform.position, velocity, deltaTime);
         foreach (SpinningPart spinner in spinners)
             spinner.Update(deltaTime, speed);
+        hamsterWheel?.Update(velocity, root.transform.forward, deltaTime);
         foreach (InferredWheel wheel in inferredWheels)
             wheel.Update(time, deltaTime, speed);
 
@@ -249,6 +252,20 @@ public class ShapedGhost
         pivot.SetParent(parent, false);
         RelativePose.Copy(pivot, source, anchor);
         return pivot;
+    }
+
+    private HamsterWheel CreateHamsterWheel(Transform vehicle, Transform body, int layer)
+    {
+        HamsterWheelController controller = HamsterWheel.Find(vehicle);
+        if (controller == null)
+            return null;
+
+        Transform source = controller.wheelRotateHandle;
+        FindPlacement(source, body, out Transform anchor, out Transform parent);
+        Transform pivot = CreatePivot(source, anchor, parent, layer);
+        anchorSources.Add(source);
+        anchorPivots.Add(pivot);
+        return new HamsterWheel(pivot, controller);
     }
 
     private void CreateSpinnerPivots(Transform vehicle, Transform body, Transform rigRoot, int layer)
