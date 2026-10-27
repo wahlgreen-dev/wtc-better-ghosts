@@ -13,7 +13,7 @@ public struct GhostMotion
     public float Skid;
 }
 
-public class LegAnimation
+public class AnimatorDriver
 {
     private const float GroundRayLift = 0.5f;
     private const float GroundRayLength = 50f;
@@ -33,6 +33,8 @@ public class LegAnimation
 
     private readonly Animator sourceAnimator;
     private readonly List<VelocityTransfer> transfers = new();
+    private readonly List<(int hash, float value)> fixedFloats = new();
+    private readonly List<(int hash, bool value)> fixedBools = new();
     private readonly int groundDistanceHash;
     private readonly int isGroundedHash;
     private readonly int groundMask = Physics.DefaultRaycastLayers;
@@ -43,7 +45,7 @@ public class LegAnimation
     private float groundClearance;
     private bool wasGrounded = true;
 
-    public LegAnimation(Transform vehicle, Animator sourceAnimator)
+    public AnimatorDriver(Transform vehicle, Animator sourceAnimator)
     {
         this.sourceAnimator = sourceAnimator;
 
@@ -76,7 +78,24 @@ public class LegAnimation
                 groundMask = mask;
         }
 
+        var setters = vehicle.GetComponentsInChildren<AnimatorParamSetter>(true);
+        for (int i = 0; i < setters.Length; i++)
+        {
+            AnimatorParamSetter setter = setters[i];
+            if (setter.anim != sourceAnimator)
+                continue;
+
+            int hash = Animator.StringToHash(setter.paramName);
+            if (setter.autoRunSetFloat)
+                fixedFloats.Add((hash, setter.floatValue));
+            if (setter.autoRunSetBool)
+                fixedBools.Add((hash, setter.boolValue));
+        }
+
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
+        if (legs == null || legs.animator != sourceAnimator)
+            return;
+
         legSpeedHash = Animator.StringToHash(legs.legSpeedParamName);
         legSpeedMultiplierHash = Animator.StringToHash(legs.legSpeedMultiplierParamName);
         skidHash = Animator.StringToHash(legs.skidParamName);
@@ -85,12 +104,20 @@ public class LegAnimation
 
     public void Drive(Animator animator, GhostMotion motion, float deltaTime)
     {
+        foreach ((int hash, float value) in fixedFloats)
+            animator.SetFloat(hash, value);
+        foreach ((int hash, bool value) in fixedBools)
+            animator.SetBool(hash, value);
+
         foreach (VelocityTransfer transfer in transfers)
             animator.SetFloat(transfer.Hash, TransferValue(transfer, motion, deltaTime));
 
-        animator.SetFloat(legSpeedHash, sourceAnimator.GetFloat(legSpeedHash));
-        animator.SetFloat(legSpeedMultiplierHash, sourceAnimator.GetFloat(legSpeedMultiplierHash));
-        animator.SetFloat(skidHash, motion.Skid);
+        if (legSpeedHash != 0)
+        {
+            animator.SetFloat(legSpeedHash, sourceAnimator.GetFloat(legSpeedHash));
+            animator.SetFloat(legSpeedMultiplierHash, sourceAnimator.GetFloat(legSpeedMultiplierHash));
+            animator.SetFloat(skidHash, motion.Skid);
+        }
 
         if (motion.IsGrounded && !wasGrounded && landedHash != 0)
             animator.SetTrigger(landedHash);

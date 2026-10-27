@@ -23,8 +23,10 @@ public class ShapedGhost
     private readonly CopiedRig rig;
     private readonly GameObject physicsContainer;
     private readonly PowerEffects power = new();
-    private readonly LegAnimation legAnimation;
+    private AnimatorDriver animatorDriver;
+    private Animator drivenAnimator;
     private readonly UmbrellaAnimation umbrella;
+    private readonly RiderPose riderPose;
     private readonly List<float> bodyTimes = new();
     private readonly List<Vector3> bodyPositions = new();
     private readonly List<Quaternion> bodyRotations = new();
@@ -60,7 +62,15 @@ public class ShapedGhost
             anchorPivots.Add(partPivots[i]);
         }
 
-        Transform rigRoot = setup.RigRoot;
+        Transform rider = setup.RiderPath != null ? TransformPaths.Find(vehicle, setup.RiderPath) : null;
+        Transform rigRoot = setup.RigRoot != null ? setup.RigRoot : rider;
+        Transform rigParent = root.transform;
+        if (rider != null)
+        {
+            rigParent = CreatePivot(rider, body, root.transform, layer);
+            riderPose = new RiderPose(rigParent, rider, body);
+        }
+
         if (setup.SpinWheels)
             CreateInferredWheels(vehicle, body, rigRoot, layer);
 
@@ -76,11 +86,10 @@ public class ShapedGhost
         }
 
         if (rigRoot != null)
-            rig = new(rigRoot, body, root.transform, palette, power, physicsContainer != null ? physicsContainer.transform : null);
-        if (setup.LegAnimator != null)
-            legAnimation = new(vehicle, setup.LegAnimator);
+            rig = new(rigRoot, rider != null ? rider : body, rigParent, palette, power, physicsContainer != null ? physicsContainer.transform : null);
         if (rigRoot != null)
         {
+            SetUpAnimator(vehicle, rigRoot, setup.LegAnimator);
             umbrella = UmbrellaAnimation.Find(vehicle, rigRoot, rig);
             FindRigSpinners(vehicle, rigRoot);
         }
@@ -101,7 +110,9 @@ public class ShapedGhost
         if (recording != null)
             UpdateParts(from, to, blend);
 
-        float speed = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend).magnitude;
+        Vector3 velocity = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend);
+        float speed = velocity.magnitude;
+        riderPose?.Update(root.transform.position, velocity, deltaTime);
         foreach (SpinningPart spinner in spinners)
             spinner.Update(deltaTime, speed);
         foreach (InferredWheel wheel in inferredWheels)
@@ -160,12 +171,12 @@ public class ShapedGhost
 
     private void UpdateRig(int from, int to, float blend, float deltaTime)
     {
-        if (legAnimation != null)
-            DriveLegs(from, to, blend, deltaTime);
+        if (animatorDriver != null)
+            UpdateAnimator(from, to, blend, deltaTime);
         rig.BakeSkins();
     }
 
-    private void DriveLegs(int from, int to, float blend, float deltaTime)
+    private void UpdateAnimator(int from, int to, float blend, float deltaTime)
     {
         GhostMotion motion = new GhostMotion
         {
@@ -175,7 +186,7 @@ public class ShapedGhost
             IsGrounded = blend < 0.5f ? bodyGrounded[from] : bodyGrounded[to],
             Skid = Mathf.Lerp(bodySkids[from], bodySkids[to], blend),
         };
-        legAnimation.Drive(rig.Animator, motion, deltaTime);
+        animatorDriver.Drive(drivenAnimator, motion, deltaTime);
     }
 
     private void CacheSamples(GhostCarData data)
@@ -229,10 +240,24 @@ public class ShapedGhost
             if (!SpinningPart.Spins(rotators[i]) || !source.IsChildOf(rigRoot))
                 continue;
 
-            Transform copy = source == rigRoot ? rig.Root : TransformPaths.Find(rig.Root, TransformPaths.RelativePath(source, rigRoot));
+            Transform copy = rig.CopyOf(source);
             if (copy != null)
                 spinners.Add(new SpinningPart(copy, rotators[i]));
         }
+    }
+
+    private void SetUpAnimator(Transform vehicle, Transform rigRoot, Animator legAnimator)
+    {
+        Animator source = legAnimator != null ? legAnimator : rigRoot.GetComponentInChildren<Animator>(true);
+        if (source == null)
+            return;
+
+        Transform copy = rig.CopyOf(source.transform);
+        if (copy == null)
+            return;
+
+        drivenAnimator = copy.GetComponent<Animator>();
+        animatorDriver = new AnimatorDriver(vehicle, source);
     }
 
     private void CopyRenderers(Transform vehicle, Transform body, Transform rigRoot, int layer)

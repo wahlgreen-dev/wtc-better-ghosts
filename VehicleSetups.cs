@@ -12,6 +12,19 @@ public class VehicleSetup
     public readonly Animator LegAnimator;
     public readonly Transform PhysicsRig;
     public readonly bool SpinWheels;
+    public readonly string RiderPath;
+
+    private VehicleSetup(string vehicleName, string riderPath)
+    {
+        VehicleName = vehicleName;
+        PartPaths = Array.Empty<string>();
+        RiderPath = riderPath;
+    }
+
+    public static VehicleSetup WithRider(string vehicleName, string riderPath)
+    {
+        return new VehicleSetup(vehicleName, riderPath);
+    }
 
     public VehicleSetup(string vehicleName, bool spinWheels)
     {
@@ -45,6 +58,8 @@ public class VehicleSetup
 
 public static class VehicleSetups
 {
+    private const string RiderName = "Car visuals moved by code";
+
     private static readonly Dictionary<string, VehicleSetup> byVehicleName = new();
 
     static VehicleSetups()
@@ -67,6 +82,9 @@ public static class VehicleSetups
         Transform physicsRig = FindPhysicsRig(vehicle);
         if (physicsRig != null)
             return new VehicleSetup(name, physicsRig);
+
+        if (TransformPaths.Find(vehicle, RiderName) != null)
+            return VehicleSetup.WithRider(name, RiderName);
 
         return new VehicleSetup(name);
     }

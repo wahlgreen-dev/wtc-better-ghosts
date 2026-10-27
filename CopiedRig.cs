@@ -20,6 +20,7 @@ public class CopiedRig
 
     private readonly List<BakedSkin> skins = new();
     private readonly PowerEffects power;
+    private readonly Transform sourceRoot;
 
     public Animator Animator { get; }
 
@@ -28,6 +29,7 @@ public class CopiedRig
     public CopiedRig(Transform source, Transform body, Transform parent, GhostPalette palette, PowerEffects power, Transform physicsContainer)
     {
         this.power = power;
+        sourceRoot = source;
         bool keepPhysics = physicsContainer != null;
         GameObject holder = new GameObject("BetterGhostRigHolder");
         holder.SetActive(false);
@@ -52,12 +54,20 @@ public class CopiedRig
             DetachDynamicBodies(copy, physicsContainer);
 
         Animator = copy.GetComponent<Animator>();
-        if (Animator == null)
-            return;
+        var animators = copy.GetComponentsInChildren<Animator>(true);
+        for (int i = 0; i < animators.Length; i++)
+        {
+            animators[i].applyRootMotion = false;
+            animators[i].cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            animators[i].enabled = !keepPhysics;
+        }
+    }
 
-        Animator.applyRootMotion = false;
-        Animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
-        Animator.enabled = !keepPhysics;
+    public Transform CopyOf(Transform source)
+    {
+        if (source == sourceRoot)
+            return Root;
+        return TransformPaths.Find(Root, TransformPaths.RelativePath(source, sourceRoot));
     }
 
     public void BakeSkins()

@@ -32,7 +32,7 @@ public class UmbrellaAnimation
             return null;
 
         SkinnedMeshRenderer umbrella = glider.umbrella;
-        Transform copy = TransformPaths.Find(rig.Root, TransformPaths.RelativePath(umbrella.transform, rigSource));
+        Transform copy = rig.CopyOf(umbrella.transform);
         if (copy == null || umbrella.sharedMesh.blendShapeCount == 0)
             return null;
 

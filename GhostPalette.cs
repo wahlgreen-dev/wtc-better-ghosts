@@ -13,12 +13,13 @@ public class GhostPalette
     private const float GhostBodyPaletteEntry = 34f;
     private const string PaletteOffsetProperty = "_ColorPaletteOffset";
 
+    private static readonly Dictionary<int, Vector2List> slotLists = new();
+
     private readonly Material material;
-    private Material offsetMaterial;
     private readonly ShadowCastingMode shadowCastingMode;
     private readonly bool receiveShadows;
     private readonly Dictionary<int, Mesh> slotStreams = new();
-    private static readonly Dictionary<int, Vector2List> slotLists = new();
+    private Material offsetMaterial;
 
     public GhostPalette(Renderer ghostRenderer)
     {
