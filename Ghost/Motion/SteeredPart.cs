@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class SteeredPart
+public class SteeredPart : IGhostMotion
 {
     private readonly Transform pivot;
     private readonly Quaternion restRotation;
@@ -12,7 +13,7 @@ public class SteeredPart
     private readonly float rotateSpeed;
     private float angle;
 
-    public SteeredPart(Transform pivot, RotateWithInput source)
+    private SteeredPart(Transform pivot, RotateWithInput source)
     {
         this.pivot = pivot;
         restRotation = pivot.localRotation;
@@ -21,9 +22,20 @@ public class SteeredPart
         rotateSpeed = source.rotateSpeed;
     }
 
-    public void Update(float steering, float deltaTime)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        angle = Mathf.MoveTowards(angle, steering * maxAngle, rotateSpeed * deltaTime);
+        var steerers = build.Vehicle.GetComponentsInChildren<RotateWithInput>(false);
+        for (int i = 0; i < steerers.Length; i++)
+        {
+            Transform pivot = build.MovingPartFor(steerers[i].transform);
+            if (pivot != null)
+                motions.Add(new SteeredPart(pivot, steerers[i]));
+        }
+    }
+
+    public void Update(GhostFrame frame)
+    {
+        angle = Mathf.MoveTowards(angle, frame.Steering * maxAngle, rotateSpeed * frame.DeltaTime);
         pivot.localRotation = restRotation * Quaternion.AngleAxis(angle, axis);
     }
 }

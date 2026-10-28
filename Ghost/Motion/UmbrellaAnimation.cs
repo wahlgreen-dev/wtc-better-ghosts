@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class UmbrellaAnimation
+public class UmbrellaAnimation : IGhostMotion
 {
     private const float FullyOpen = 0f;
     private const float FullyClosed = 100f;
@@ -25,23 +26,23 @@ public class UmbrellaAnimation
         weight = closedWeight;
     }
 
-    public static UmbrellaAnimation Find(Transform vehicle, Transform rigSource, CopiedRig rig)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        GliderController glider = vehicle.GetComponentInChildren<GliderController>(true);
-        if (glider == null || glider.umbrella == null || rig == null || !glider.umbrella.transform.IsChildOf(rigSource))
-            return null;
+        GliderController glider = build.Vehicle.GetComponentInChildren<GliderController>(true);
+        if (glider == null || glider.umbrella == null || !build.IsInRig(glider.umbrella.transform))
+            return;
 
         SkinnedMeshRenderer umbrella = glider.umbrella;
-        Transform copy = rig.CopyOf(umbrella.transform);
+        Transform copy = build.MovingPartFor(umbrella.transform);
         if (copy == null || umbrella.sharedMesh.blendShapeCount == 0)
-            return null;
+            return;
 
-        return new UmbrellaAnimation(copy.GetComponent<SkinnedMeshRenderer>(), umbrella.GetBlendShapeWeight(0), glider.umbrellaAnimSpeed);
+        motions.Add(new UmbrellaAnimation(copy.GetComponent<SkinnedMeshRenderer>(), umbrella.GetBlendShapeWeight(0), glider.umbrellaAnimSpeed));
     }
 
-    public void Update(bool open, float deltaTime)
+    public void Update(GhostFrame frame)
     {
-        weight = Mathf.MoveTowards(weight, open ? openWeight : closedWeight, speed * deltaTime);
+        weight = Mathf.MoveTowards(weight, frame.ActionPressed ? openWeight : closedWeight, speed * frame.DeltaTime);
         for (int i = 0; i < blendShapeCount; i++)
             canopy.SetBlendShapeWeight(i, weight);
     }

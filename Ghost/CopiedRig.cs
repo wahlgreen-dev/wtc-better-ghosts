@@ -21,16 +21,14 @@ public class CopiedRig
     private readonly List<BakedSkin> skins = new();
     private readonly PowerEffects power;
     private readonly Transform sourceRoot;
-
-    public Animator Animator { get; }
+    private readonly GameObject physicsContainer;
 
     public Transform Root { get; }
 
-    public CopiedRig(Transform source, Transform body, Transform parent, GhostPalette palette, PowerEffects power, Transform physicsContainer)
+    public CopiedRig(Transform source, bool keepPhysics, GhostPivots pivots, GhostPalette palette, PowerEffects power)
     {
         this.power = power;
         sourceRoot = source;
-        bool keepPhysics = physicsContainer != null;
         GameObject holder = new GameObject("BetterGhostRigHolder");
         holder.SetActive(false);
         GameObject copy = Object.Instantiate(source.gameObject, holder.transform);
@@ -40,20 +38,22 @@ public class CopiedRig
         power.AddFromCopy(copy, source.gameObject);
         RemoveBillboards(copy.transform);
         ComponentStripper.Strip(copy, keepPhysics ? physicsComponents : visualComponents, power.Keeps);
-        ComponentStripper.SetLayer(copy.transform, parent.gameObject.layer);
+        ComponentStripper.SetLayer(copy.transform, pivots.Layer);
         if (keepPhysics)
-            PreparePhysics(copy, source.gameObject, parent.gameObject);
+            PreparePhysics(copy, source.gameObject, pivots.ParentFor(source).gameObject);
 
-        copy.transform.SetParent(parent, false);
-        RelativePose.Copy(copy.transform, source.transform, body);
+        pivots.Place(copy.transform, source);
         Object.Destroy(holder);
 
         PaintMeshRenderers(copy, palette);
         PrepareSkins(copy, palette);
         if (keepPhysics)
-            DetachDynamicBodies(copy, physicsContainer);
+        {
+            physicsContainer = new GameObject("BetterGhostPhysics");
+            physicsContainer.layer = pivots.Layer;
+            DetachDynamicBodies(copy, physicsContainer.transform);
+        }
 
-        Animator = copy.GetComponent<Animator>();
         var animators = copy.GetComponentsInChildren<Animator>(true);
         for (int i = 0; i < animators.Length; i++)
         {
@@ -70,19 +70,28 @@ public class CopiedRig
         return TransformPaths.Find(Root, TransformPaths.RelativePath(source, sourceRoot));
     }
 
-    public void BakeSkins()
+    public void Update(bool visible)
     {
-        foreach (BakedSkin baked in skins)
-        {
-            baked.Skin.BakeMesh(baked.Mesh);
-            baked.Mesh.SetUVs(GhostPalette.SlotChannel, baked.PaletteSlots);
-        }
+        BakeSkins();
+        if (physicsContainer != null && physicsContainer.activeSelf != visible)
+            physicsContainer.SetActive(visible);
     }
 
     public void Destroy()
     {
         foreach (BakedSkin baked in skins)
             Object.Destroy(baked.Mesh);
+        if (physicsContainer != null)
+            Object.Destroy(physicsContainer);
+    }
+
+    private void BakeSkins()
+    {
+        foreach (BakedSkin baked in skins)
+        {
+            baked.Skin.BakeMesh(baked.Mesh);
+            baked.Mesh.SetUVs(GhostPalette.SlotChannel, baked.PaletteSlots);
+        }
     }
 
     private static void PreparePhysics(GameObject copy, GameObject source, GameObject anchorObject)

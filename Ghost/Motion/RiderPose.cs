@@ -1,33 +1,47 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class RiderPose
+public class RiderPose : IGhostMotion
 {
+    public const string RiderName = "Car visuals moved by code";
+
     private const float MinimumTurningSpeed = 0.5f;
     private const float TurnRate = 8f;
 
-    private readonly Transform pivot;
+    private readonly Transform copy;
     private readonly Vector3 offset;
     private readonly Quaternion modelRotation;
     private Quaternion facing;
 
-    public RiderPose(Transform pivot, Transform rider, Transform body)
+    private RiderPose(Transform copy, Transform rider, Transform body)
     {
-        this.pivot = pivot;
+        this.copy = copy;
         offset = rider.position - body.position;
         facing = Quaternion.LookRotation(Flatten(rider.forward, Vector3.forward), Vector3.up);
         modelRotation = Quaternion.Inverse(facing) * rider.rotation;
     }
 
-    public void Update(Vector3 bodyPosition, Vector3 velocity, float deltaTime)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        Vector3 horizontal = new Vector3(velocity.x, 0f, velocity.z);
-        if (horizontal.magnitude > MinimumTurningSpeed)
-            facing = Quaternion.Slerp(facing, Quaternion.LookRotation(horizontal, Vector3.up), 1f - Mathf.Exp(-TurnRate * deltaTime));
+        Transform rider = TransformPaths.Find(build.Vehicle, RiderName);
+        if (rider == null)
+            return;
 
-        pivot.position = bodyPosition + offset;
-        pivot.rotation = facing * modelRotation;
+        Transform copy = build.MovingPartFor(rider);
+        if (copy != null)
+            motions.Add(new RiderPose(copy, rider, build.Body));
+    }
+
+    public void Update(GhostFrame frame)
+    {
+        Vector3 horizontal = new Vector3(frame.Velocity.x, 0f, frame.Velocity.z);
+        if (horizontal.magnitude > MinimumTurningSpeed)
+            facing = Quaternion.Slerp(facing, Quaternion.LookRotation(horizontal, Vector3.up), 1f - Mathf.Exp(-TurnRate * frame.DeltaTime));
+
+        copy.position = frame.Position + offset;
+        copy.rotation = facing * modelRotation;
     }
 
     private static Vector3 Flatten(Vector3 direction, Vector3 fallback)

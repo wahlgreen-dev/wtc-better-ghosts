@@ -102,7 +102,7 @@ public class LevelSession
             return;
         }
 
-        recorder.Recording.Save(Path.Combine(RecordingFolder, info.instanceId + ".bgh"));
+        RecordingFile.Save(recorder.Recording, Path.Combine(RecordingFolder, info.instanceId + ".bgh"));
     }
 
     private void StartRun()
@@ -118,16 +118,16 @@ public class LevelSession
             return;
 
         vehicle = playerVehicle.transform;
-        frame = foundSetup.FramePath.Length > 0 ? TransformPaths.Find(vehicle, foundSetup.FramePath) : null;
+        frame = foundSetup.HasFrame ? TransformPaths.Find(vehicle, foundSetup.FramePath) : null;
         body = frame != null ? frame : playerVehicle._mainRigidbody.transform;
-        parts = new Transform[foundSetup.PartPaths.Length];
+        parts = new Transform[foundSetup.RecordedPartPaths.Length];
         for (int i = 0; i < parts.Length; i++)
         {
-            parts[i] = TransformPaths.Find(vehicle, foundSetup.PartPaths[i]);
+            parts[i] = TransformPaths.Find(vehicle, foundSetup.RecordedPartPaths[i]);
             if (parts[i] != null)
                 continue;
 
-            logger.Warning($"{vehicle.name} has no {foundSetup.PartPaths[i]}");
+            logger.Warning($"{vehicle.name} has no {foundSetup.RecordedPartPaths[i]}");
             return;
         }
 
@@ -168,8 +168,8 @@ public class LevelSession
         if (!File.Exists(path))
             return null;
 
-        PartRecording recording = PartRecording.Load(path);
-        if (recording == null || !recording.Matches(setup))
+        PartRecording recording = RecordingFile.Load(path);
+        if (recording == null || !recording.Matches(setup) || recording.SampleCount != manager.existingGhostData.ghostData.Count)
             return null;
 
         return recording;

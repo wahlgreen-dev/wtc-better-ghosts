@@ -1,29 +1,50 @@
 using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
+using TransformList = Il2CppSystem.Collections.Generic.List<UnityEngine.Transform>;
 
 namespace BetterGhosts;
 
-public class HotWheels
+public class HotWheels : IGhostMotion
 {
     private readonly List<(Transform pivot, float radius)> wheels = new();
     private readonly float actionSpinMultiplier;
 
-    public HotWheels(HotWheelsController controller)
+    private HotWheels(HotWheelsController controller)
     {
         actionSpinMultiplier = controller.actionButtonSpinMultiplier;
     }
 
-    public void Add(Transform pivot, float radius)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        if (radius > 0f)
-            wheels.Add((pivot, radius));
+        HotWheelsController controller = build.Vehicle.GetComponentInChildren<HotWheelsController>(true);
+        if (controller == null)
+            return;
+
+        HotWheels hotWheels = new HotWheels(controller);
+        hotWheels.AddWheels(build, controller.wheelSpinHandlesFront, controller.wheelRadiusFront);
+        hotWheels.AddWheels(build, controller.wheelSpinHandlesBack, controller.wheelRadiusBack);
+        if (hotWheels.wheels.Count > 0)
+            motions.Add(hotWheels);
     }
 
-    public void Update(Vector3 velocity, Vector3 forward, bool actionPressed, float deltaTime)
+    public void Update(GhostFrame frame)
     {
-        float speed = Vector3.Dot(velocity, forward) * (actionPressed ? actionSpinMultiplier : 1f);
+        float speed = Vector3.Dot(frame.Velocity, frame.Forward) * (frame.ActionPressed ? actionSpinMultiplier : 1f);
         foreach ((Transform pivot, float radius) in wheels)
-            pivot.Rotate(Vector3.right, speed / radius * Mathf.Rad2Deg * deltaTime, Space.Self);
+            pivot.Rotate(Vector3.right, speed / radius * Mathf.Rad2Deg * frame.DeltaTime, Space.Self);
+    }
+
+    private void AddWheels(GhostBuild build, TransformList handles, float radius)
+    {
+        if (handles == null || radius <= 0f)
+            return;
+
+        for (int i = 0; i < handles.Count; i++)
+        {
+            Transform pivot = handles[i] != null ? build.MovingPartFor(handles[i]) : null;
+            if (pivot != null)
+                wheels.Add((pivot, radius));
+        }
     }
 }

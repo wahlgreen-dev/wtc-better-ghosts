@@ -1,37 +1,51 @@
+using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class LeaningPart
+public class LeaningPart : IGhostMotion
 {
+    private const float LeanPerTurnRate = 0.22f;
+
     private readonly Transform pivot;
     private readonly Quaternion restRotation;
     private readonly float maxAngle;
     private readonly AnimationCurve leanToAngle;
     private readonly float rotateSpeed;
-    private readonly float direction;
+    private readonly float turnDirection;
     private readonly bool onlyIfGrounded;
     private readonly float maxInputContribution;
     private float angle;
 
-    public LeaningPart(Transform pivot, LeanWithSkid source)
+    private LeaningPart(Transform pivot, LeanWithSkid source)
     {
         this.pivot = pivot;
         restRotation = pivot.localRotation;
         maxAngle = source.maxAngle;
         leanToAngle = source.leanToAngle;
         rotateSpeed = source.rotateSpeed;
-        direction = source.invert ? -1f : 1f;
+        turnDirection = source.invert ? 1f : -1f;
         onlyIfGrounded = source.onlyIfGrounded;
         maxInputContribution = source.maxInputContribution;
     }
 
-    public void Update(float skid, float steering, bool grounded, float deltaTime)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        float lean = Mathf.Clamp(skid + steering * maxInputContribution, -1f, 1f);
-        float target = onlyIfGrounded && !grounded ? 0f : Mathf.Sign(lean) * leanToAngle.Evaluate(Mathf.Abs(lean)) * maxAngle * direction;
-        angle = Mathf.MoveTowards(angle, target, rotateSpeed * deltaTime);
+        var leaners = build.Vehicle.GetComponentsInChildren<LeanWithSkid>(false);
+        for (int i = 0; i < leaners.Length; i++)
+        {
+            Transform pivot = build.MovingPartFor(leaners[i].transform);
+            if (pivot != null)
+                motions.Add(new LeaningPart(pivot, leaners[i]));
+        }
+    }
+
+    public void Update(GhostFrame frame)
+    {
+        float lean = Mathf.Clamp(turnDirection * LeanPerTurnRate * frame.TurnRate + frame.Steering * maxInputContribution, -1f, 1f);
+        float target = onlyIfGrounded && !frame.IsGrounded ? 0f : Mathf.Sign(lean) * leanToAngle.Evaluate(Mathf.Abs(lean)) * maxAngle;
+        angle = Mathf.MoveTowards(angle, target, rotateSpeed * frame.DeltaTime);
         pivot.localRotation = restRotation * Quaternion.AngleAxis(angle, Vector3.forward);
     }
 }

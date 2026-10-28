@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class SpinningPart
+public class SpinningPart : IGhostMotion
 {
     private readonly Transform transform;
     private readonly Vector3 axis;
@@ -11,7 +12,7 @@ public class SpinningPart
     private readonly Space space;
     private readonly bool speedBasedOnVelocity;
 
-    public SpinningPart(Transform transform, RotateAroundAxis source)
+    private SpinningPart(Transform transform, RotateAroundAxis source)
     {
         this.transform = transform;
         axis = source.axis;
@@ -20,14 +21,23 @@ public class SpinningPart
         speedBasedOnVelocity = source.speedBasedOnVelocity;
     }
 
-    public static bool Spins(RotateAroundAxis rotator)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        return rotator.enabled && rotator.gameObject.activeInHierarchy;
+        var rotators = build.Vehicle.GetComponentsInChildren<RotateAroundAxis>(true);
+        for (int i = 0; i < rotators.Length; i++)
+        {
+            if (!rotators[i].enabled || !rotators[i].gameObject.activeInHierarchy)
+                continue;
+
+            Transform part = build.MovingPartFor(rotators[i].transform);
+            if (part != null)
+                motions.Add(new SpinningPart(part, rotators[i]));
+        }
     }
 
-    public void Update(float deltaTime, float velocity)
+    public void Update(GhostFrame frame)
     {
-        float currentSpeed = speedBasedOnVelocity ? speed * velocity : speed;
-        transform.Rotate(axis * (currentSpeed * deltaTime), space);
+        float currentSpeed = speedBasedOnVelocity ? speed * frame.Speed : speed;
+        transform.Rotate(axis * (currentSpeed * frame.DeltaTime), space);
     }
 }

@@ -5,7 +5,7 @@ using ParticleSystemList = Il2CppSystem.Collections.Generic.List<UnityEngine.Par
 
 namespace BetterGhosts;
 
-public class PowerEffects
+public class PowerEffects : IGhostMotion
 {
     private static readonly HashSet<string> effectComponents = new() { "Transform", "MeshFilter", "MeshRenderer", "Fire", "Billboard", "ParticleSystem", "ParticleSystemRenderer" };
 
@@ -60,21 +60,21 @@ public class PowerEffects
             keptRoots.Add(system.transform);
     }
 
-    public void AddDetachedFire(Fire source, Transform anchor, Transform parent)
+    public void AddDetachedFire(Fire source, GhostPivots pivots)
     {
-        GameObject copy = CopyDetached(source.gameObject, anchor, parent);
+        GameObject copy = CopyDetached(source.gameObject, pivots);
         if (!source.startOn)
             fires.Add(new DrivenFire { Fire = copy.GetComponent<Fire>(), ContainerScale = source.containerScale });
     }
 
-    public void AddDetachedBlock(JetpackBuildingBlock block, Transform anchor, Transform parent)
+    public void AddDetachedBlock(JetpackBuildingBlock block, GhostPivots pivots)
     {
-        AddDetachedParticles(block.smoke, smoke, anchor, parent);
-        AddDetachedParticles(block.burst, bursts, anchor, parent);
-        AddDetachedParticles(block.burstRing, bursts, anchor, parent);
+        AddDetachedParticles(block.smoke, smoke, pivots);
+        AddDetachedParticles(block.burst, bursts, pivots);
+        AddDetachedParticles(block.burstRing, bursts, pivots);
     }
 
-    private static void AddDetachedParticles(ParticleSystemList sources, List<ParticleSystem> target, Transform anchor, Transform parent)
+    private static void AddDetachedParticles(ParticleSystemList sources, List<ParticleSystem> target, GhostPivots pivots)
     {
         List<ParticleSystem> found = new();
         AddAll(sources, found);
@@ -83,11 +83,11 @@ public class PowerEffects
             if (source.GetComponentInParent<Fire>(true) != null)
                 continue;
 
-            target.Add(CopyDetached(source.gameObject, anchor, parent).GetComponent<ParticleSystem>());
+            target.Add(CopyDetached(source.gameObject, pivots).GetComponent<ParticleSystem>());
         }
     }
 
-    private static GameObject CopyDetached(GameObject source, Transform anchor, Transform parent)
+    private static GameObject CopyDetached(GameObject source, GhostPivots pivots)
     {
         GameObject holder = new GameObject("BetterGhostEffectHolder");
         holder.SetActive(false);
@@ -95,14 +95,18 @@ public class PowerEffects
         copy.name = source.name;
 
         ComponentStripper.Strip(copy, effectComponents, transform => false);
-        ComponentStripper.SetLayer(copy.transform, parent.gameObject.layer);
-        copy.transform.SetParent(parent, false);
-        RelativePose.Copy(copy.transform, source.transform, anchor);
+        ComponentStripper.SetLayer(copy.transform, pivots.Layer);
+        pivots.Place(copy.transform, source.transform);
         Object.Destroy(holder);
         return copy;
     }
 
-    public void SetActive(bool active)
+    public void Update(GhostFrame frame)
+    {
+        SetActive(frame.ActionPressed);
+    }
+
+    private void SetActive(bool active)
     {
         if (active == this.active)
             return;

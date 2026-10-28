@@ -4,18 +4,7 @@ using UnityEngine;
 
 namespace BetterGhosts;
 
-public struct GhostMotion
-{
-    public Vector3 Position;
-    public Quaternion Rotation;
-    public Vector3 Velocity;
-    public bool IsGrounded;
-    public float Skid;
-    public float Steering;
-    public bool ActionPressed;
-}
-
-public class AnimatorDriver
+public class AnimatorDriver : IGhostMotion
 {
     private const float GroundRayLift = 0.5f;
     private const float GroundRayLength = 50f;
@@ -37,6 +26,7 @@ public class AnimatorDriver
     }
 
     private readonly Animator sourceAnimator;
+    private readonly Animator animator;
     private readonly List<VelocityTransfer> transfers = new();
     private readonly List<(int hash, float value)> fixedFloats = new();
     private readonly List<(int hash, bool value)> fixedBools = new();
@@ -56,9 +46,10 @@ public class AnimatorDriver
     private float groundClearance;
     private bool wasGrounded = true;
 
-    public AnimatorDriver(Transform vehicle, Animator sourceAnimator)
+    private AnimatorDriver(Transform vehicle, Animator sourceAnimator, Animator animator)
     {
         this.sourceAnimator = sourceAnimator;
+        this.animator = animator;
 
         var transferComponents = vehicle.GetComponentsInChildren<TransferVelocityToAnimationProperty>(true);
         for (int i = 0; i < transferComponents.Length; i++)
@@ -128,7 +119,22 @@ public class AnimatorDriver
         landedHash = legs.landedHash;
     }
 
-    public void Drive(Animator animator, GhostMotion motion, float deltaTime)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
+    {
+        if (build.Setup.RigRoot == null)
+            return;
+
+        Animator source = build.Setup.RigRoot.GetComponentInChildren<Animator>(true);
+        if (source == null)
+            return;
+
+        Transform copy = build.MovingPartFor(source.transform);
+        Animator animator = copy != null ? copy.GetComponent<Animator>() : null;
+        if (animator != null)
+            motions.Add(new AnimatorDriver(build.Vehicle, source, animator));
+    }
+
+    public void Update(GhostFrame frame)
     {
         foreach ((int hash, float value) in fixedFloats)
             animator.SetFloat(hash, value);
@@ -136,70 +142,70 @@ public class AnimatorDriver
             animator.SetBool(hash, value);
 
         foreach (VelocityTransfer transfer in transfers)
-            animator.SetFloat(transfer.Hash, TransferValue(transfer, motion, deltaTime));
+            animator.SetFloat(transfer.Hash, TransferValue(transfer, frame));
 
         if (legSpeedHash != 0)
         {
             animator.SetFloat(legSpeedHash, sourceAnimator.GetFloat(legSpeedHash));
             animator.SetFloat(legSpeedMultiplierHash, sourceAnimator.GetFloat(legSpeedMultiplierHash));
-            animator.SetFloat(skidHash, motion.Skid);
+            animator.SetFloat(skidHash, frame.Skid);
         }
 
         if (pedalHash != 0)
-            animator.SetFloat(pedalHash, motion.IsGrounded ? Mathf.Min(motion.Velocity.magnitude, maxPedalSpeed) : 0f);
+            animator.SetFloat(pedalHash, frame.IsGrounded ? Mathf.Min(frame.Velocity.magnitude, maxPedalSpeed) : 0f);
 
         if (pumpHash != 0)
-            DrivePump(animator, motion, deltaTime);
+            DrivePump(frame);
 
-        if (motion.IsGrounded && !wasGrounded && landedHash != 0)
+        if (frame.IsGrounded && !wasGrounded && landedHash != 0)
             animator.SetTrigger(landedHash);
-        wasGrounded = motion.IsGrounded;
+        wasGrounded = frame.IsGrounded;
 
         if (groundDistanceHash == 0)
             return;
 
-        animator.SetFloat(groundDistanceHash, GroundDistance(motion));
-        animator.SetBool(isGroundedHash, motion.IsGrounded);
+        animator.SetFloat(groundDistanceHash, GroundDistance(frame));
+        animator.SetBool(isGroundedHash, frame.IsGrounded);
     }
 
-    private void DrivePump(Animator animator, GhostMotion motion, float deltaTime)
+    private void DrivePump(GhostFrame frame)
     {
-        animator.SetFloat(horizontalHash, motion.Steering);
-        pumpCooldown -= deltaTime;
-        if (!motion.ActionPressed || pumpCooldown > 0f)
+        animator.SetFloat(horizontalHash, frame.Steering);
+        pumpCooldown -= frame.DeltaTime;
+        if (!frame.ActionPressed || pumpCooldown > 0f)
             return;
 
         animator.SetTrigger(pumpHash);
         pumpCooldown = pumpInterval;
     }
 
-    private float TransferValue(VelocityTransfer transfer, GhostMotion motion, float deltaTime)
+    private float TransferValue(VelocityTransfer transfer, GhostFrame frame)
     {
-        Vector3 velocity = transfer.LocalSpace ? Quaternion.Inverse(motion.Rotation) * motion.Velocity : motion.Velocity;
+        Vector3 velocity = transfer.LocalSpace ? Quaternion.Inverse(frame.Rotation) * frame.Velocity : frame.Velocity;
         bool verticalOnly = transfer.Axis.x == 0f && transfer.Axis.z == 0f;
         float target = verticalOnly ? Vector3.Dot(velocity, transfer.Axis) : Vector3.Scale(velocity, transfer.Axis).magnitude;
         target *= transfer.Factor;
         if (transfer.Clamp)
             target = Mathf.Clamp(target, -transfer.ClampMagnitude, transfer.ClampMagnitude);
 
-        if (transfer.SmoothTime <= 0f || deltaTime <= 0f)
+        if (transfer.SmoothTime <= 0f || frame.DeltaTime <= 0f)
         {
             transfer.Current = target;
             return target;
         }
 
-        transfer.Current = Mathf.SmoothDamp(transfer.Current, target, ref transfer.SmoothVelocity, transfer.SmoothTime, Mathf.Infinity, deltaTime);
+        transfer.Current = Mathf.SmoothDamp(transfer.Current, target, ref transfer.SmoothVelocity, transfer.SmoothTime, Mathf.Infinity, frame.DeltaTime);
         return transfer.Current;
     }
 
-    private float GroundDistance(GhostMotion motion)
+    private float GroundDistance(GhostFrame frame)
     {
-        Vector3 origin = motion.Position + Vector3.up * GroundRayLift;
+        Vector3 origin = frame.Position + Vector3.up * GroundRayLift;
         if (!Physics.Raycast(origin, Vector3.down, out RaycastHit hit, GroundRayLength, groundMask, QueryTriggerInteraction.Ignore))
             return GroundRayLength;
 
         float height = hit.distance - GroundRayLift;
-        if (!motion.IsGrounded)
+        if (!frame.IsGrounded)
             return Mathf.Max(0f, height - groundClearance);
 
         groundClearance = height;

@@ -1,9 +1,10 @@
+using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class InferredWheel
+public class InferredWheel : IGhostMotion
 {
     private const float SpeedVariation = 0.1f;
     private const float DriftAmount = 0.1f;
@@ -13,7 +14,7 @@ public class InferredWheel
 
     private readonly Transform pivot;
     private readonly Vector3 axis;
-    private readonly Vector3 anchor;
+    private readonly Vector3 anchorOffset;
     private readonly Vector3 restPosition;
     private readonly Quaternion restRotation;
     private readonly float speed;
@@ -21,29 +22,45 @@ public class InferredWheel
     private float currentSpeed;
     private float angle;
 
-    public InferredWheel(Transform pivot, Transform wheel, Transform body)
+    private InferredWheel(Transform pivot, InputWheel wheel, HingeJoint hinge)
     {
         this.pivot = pivot;
-        HingeJoint hinge = wheel.GetComponent<HingeJoint>();
-        Quaternion bodyRotationInverse = Quaternion.Inverse(body.rotation);
-        axis = (bodyRotationInverse * (wheel.rotation * hinge.axis)).normalized;
-        anchor = body.InverseTransformPoint(wheel.TransformPoint(hinge.anchor));
-        restPosition = body.InverseTransformPoint(wheel.position);
-        restRotation = bodyRotationInverse * wheel.rotation;
-        speed = wheel.GetComponent<InputWheel>().maxAngularVelocity * Random.Range(1f - SpeedVariation, 1f + SpeedVariation);
+        axis = hinge.axis.normalized;
+        restPosition = pivot.localPosition;
+        restRotation = pivot.localRotation;
+        anchorOffset = Vector3.Scale(pivot.localScale, hinge.anchor);
+        speed = wheel.maxAngularVelocity * Random.Range(1f - SpeedVariation, 1f + SpeedVariation);
         driftSeed = Random.Range(0f, 100f);
         angle = Random.Range(0f, 360f);
     }
 
-    public void Update(float time, float deltaTime, float ghostSpeed)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        float drift = 1f + DriftAmount * (Mathf.PerlinNoise(driftSeed, time * DriftRate) * 2f - 1f);
-        float targetSpeed = ghostSpeed > MovingSpeed ? speed * drift : 0f;
-        currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, Mathf.Abs(speed) / SpinUpTime * deltaTime);
-        angle += currentSpeed * deltaTime;
+        if (build.Setup.RecordedPartPaths.Length > 0)
+            return;
+
+        var wheels = build.Vehicle.GetComponentsInChildren<InputWheel>(false);
+        for (int i = 0; i < wheels.Length; i++)
+        {
+            HingeJoint hinge = wheels[i].GetComponent<HingeJoint>();
+            if (hinge == null || build.IsInRig(wheels[i].transform))
+                continue;
+
+            Transform pivot = build.MovingPartFor(wheels[i].transform);
+            if (pivot != null)
+                motions.Add(new InferredWheel(pivot, wheels[i], hinge));
+        }
+    }
+
+    public void Update(GhostFrame frame)
+    {
+        float drift = 1f + DriftAmount * (Mathf.PerlinNoise(driftSeed, frame.Time * DriftRate) * 2f - 1f);
+        float targetSpeed = frame.Speed > MovingSpeed ? speed * drift : 0f;
+        currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, Mathf.Abs(speed) / SpinUpTime * frame.DeltaTime);
+        angle += currentSpeed * frame.DeltaTime;
 
         Quaternion turn = Quaternion.AngleAxis(angle, axis);
-        pivot.localRotation = turn * restRotation;
-        pivot.localPosition = anchor + turn * (restPosition - anchor);
+        pivot.localRotation = restRotation * turn;
+        pivot.localPosition = restPosition + restRotation * anchorOffset - restRotation * (turn * anchorOffset);
     }
 }

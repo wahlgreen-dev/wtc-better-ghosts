@@ -1,54 +1,66 @@
 using System.Collections.Generic;
+using Il2Cpp;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class SwingingPivot
+public class SwingingPivot : IGhostMotion
 {
+    private readonly Transform root;
     private readonly Transform container;
     private readonly Vector3 restOffset;
-    private readonly List<Vector3> pivotPositions;
-    private readonly List<Quaternion> pivotRotations;
+    private readonly GhostSamples samples;
     private readonly List<bool> flipped = new();
 
-    public SwingingPivot(Transform container, Transform source, Animator copiedAnimator, List<float> times, List<Vector3> positions, List<Quaternion> rotations, List<Vector3> velocities)
+    private SwingingPivot(Transform root, Transform container, Transform source, GhostSamples samples)
     {
+        this.root = root;
         this.container = container;
+        this.samples = samples;
         restOffset = container.localPosition;
-        pivotPositions = positions;
-        pivotRotations = rotations;
 
         float swapDistance = source.parent.TransformVector(source.localPosition).magnitude;
         bool isFlipped = false;
         flipped.Add(isFlipped);
-        for (int i = 1; i < positions.Count; i++)
+        for (int i = 1; i < samples.Count; i++)
         {
-            Vector3 expected = positions[i - 1] + velocities[i - 1] * (times[i] - times[i - 1]);
-            if (Vector3.Distance(positions[i], expected) > swapDistance)
+            Vector3 expected = samples.Positions[i - 1] + samples.Velocities[i - 1] * (samples.Times[i] - samples.Times[i - 1]);
+            if (Vector3.Distance(samples.Positions[i], expected) > swapDistance)
                 isFlipped = !isFlipped;
             flipped.Add(isFlipped);
         }
 
-        SyncAnimator(source.GetComponent<Animator>(), copiedAnimator);
+        SyncAnimator(source.GetComponent<Animator>(), container.GetComponent<Animator>());
     }
 
-    public void Update(Transform root, int from, int to, float blend)
+    public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        Vector3 offset = flipped[blend < 0.5f ? from : to] ? -restOffset : restOffset;
+        DoubleSwingers swingers = build.Vehicle.GetComponentInChildren<DoubleSwingers>(true);
+        if (swingers == null || swingers.childContainer == null)
+            return;
+
+        Transform container = build.MovingPartFor(swingers.childContainer);
+        if (container != null)
+            motions.Add(new SwingingPivot(build.Root, container, swingers.childContainer, build.Samples));
+    }
+
+    public void Update(GhostFrame frame)
+    {
+        Vector3 offset = flipped[frame.Blend < 0.5f ? frame.From : frame.To] ? -restOffset : restOffset;
         container.localPosition = offset;
-        if (flipped[from] == flipped[to])
+        if (flipped[frame.From] == flipped[frame.To])
             return;
 
         Vector3 scale = root.lossyScale;
-        Vector3 fromCenter = ContainerCenter(from, scale);
-        Vector3 toCenter = ContainerCenter(to, scale);
-        root.position = Vector3.Lerp(fromCenter, toCenter, blend) - root.rotation * Vector3.Scale(scale, offset);
+        Vector3 fromCenter = ContainerCenter(frame.From, scale);
+        Vector3 toCenter = ContainerCenter(frame.To, scale);
+        root.position = Vector3.Lerp(fromCenter, toCenter, frame.Blend) - root.rotation * Vector3.Scale(scale, offset);
     }
 
     private Vector3 ContainerCenter(int sample, Vector3 scale)
     {
         Vector3 offset = flipped[sample] ? -restOffset : restOffset;
-        return pivotPositions[sample] + pivotRotations[sample] * Vector3.Scale(scale, offset);
+        return samples.Positions[sample] + samples.Rotations[sample] * Vector3.Scale(scale, offset);
     }
 
     private static void SyncAnimator(Animator source, Animator copy)

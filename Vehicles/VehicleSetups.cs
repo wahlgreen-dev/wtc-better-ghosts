@@ -1,96 +1,16 @@
-using System;
 using System.Collections.Generic;
 using Il2Cpp;
 using UnityEngine;
 
 namespace BetterGhosts;
 
-public class VehicleSetup
-{
-    public readonly string VehicleName;
-    public readonly string[] PartPaths;
-    public readonly Animator LegAnimator;
-    public readonly Transform PhysicsRig;
-    public readonly string RiderPath;
-    public readonly Transform SwingingContainer;
-    public readonly string FramePath = "";
-    public readonly bool PartsRotateOnly;
-
-    private VehicleSetup(string vehicleName, string riderPath)
-    {
-        VehicleName = vehicleName;
-        PartPaths = Array.Empty<string>();
-        RiderPath = riderPath;
-    }
-
-    private VehicleSetup(string vehicleName, string framePath, string[] rotatingPartPaths)
-    {
-        VehicleName = vehicleName;
-        FramePath = framePath;
-        PartPaths = rotatingPartPaths;
-        PartsRotateOnly = true;
-    }
-
-    public static VehicleSetup WithFrame(string vehicleName, string framePath, string[] rotatingPartPaths)
-    {
-        return new VehicleSetup(vehicleName, framePath, rotatingPartPaths);
-    }
-
-    public static VehicleSetup WithRider(string vehicleName, string riderPath)
-    {
-        return new VehicleSetup(vehicleName, riderPath);
-    }
-
-    public static VehicleSetup WithSwingingContainer(string vehicleName, Transform container)
-    {
-        return new VehicleSetup(vehicleName, null, container);
-    }
-
-    private VehicleSetup(string vehicleName, Transform physicsRig, Transform swingingContainer)
-    {
-        VehicleName = vehicleName;
-        PartPaths = Array.Empty<string>();
-        PhysicsRig = physicsRig;
-        SwingingContainer = swingingContainer;
-    }
-
-    public VehicleSetup(string vehicleName, params string[] partPaths)
-    {
-        VehicleName = vehicleName;
-        PartPaths = partPaths;
-    }
-
-    public VehicleSetup(string vehicleName, Animator legAnimator)
-    {
-        VehicleName = vehicleName;
-        PartPaths = Array.Empty<string>();
-        LegAnimator = legAnimator;
-    }
-
-    public VehicleSetup(string vehicleName, Transform physicsRig) : this(vehicleName, physicsRig, null)
-    {
-    }
-
-    public Transform RigRoot
-    {
-        get
-        {
-            if (LegAnimator != null)
-                return LegAnimator.transform;
-            return PhysicsRig != null ? PhysicsRig : SwingingContainer;
-        }
-    }
-}
-
 public static class VehicleSetups
 {
-    private const string RiderName = "Car visuals moved by code";
-
     private static readonly Dictionary<string, VehicleSetup> byVehicleName = new();
 
     static VehicleSetups()
     {
-        Add(new("Car with giraffe wheels Variant", "Rigidbody/Visuals/Components/Lamppost wheel", "Rigidbody/Visuals/Components/Lamppost wheel (2)"));
+        Add(VehicleSetup.WithRecordedParts("Car with giraffe wheels Variant", "Rigidbody/Visuals/Components/Lamppost wheel", "Rigidbody/Visuals/Components/Lamppost wheel (2)"));
     }
 
     public static VehicleSetup Find(Transform vehicle)
@@ -100,33 +20,34 @@ public static class VehicleSetups
             return setup;
 
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
-        if (legs != null)
-            return new VehicleSetup(name, legs.animator);
+        if (legs != null && legs.animator != null)
+            return VehicleSetup.WithRig(name, legs.animator.transform);
 
         CarWithLegsSkater skater = vehicle.GetComponentInChildren<CarWithLegsSkater>(true);
         if (skater != null && skater.animator != null)
-            return new VehicleSetup(name, skater.animator);
+            return VehicleSetup.WithRig(name, skater.animator.transform);
 
         DoubleSwingers swingers = vehicle.GetComponentInChildren<DoubleSwingers>(true);
         if (swingers != null && swingers.childContainer != null)
-            return VehicleSetup.WithSwingingContainer(name, swingers.childContainer);
+            return VehicleSetup.WithRig(name, swingers.childContainer);
 
         StiltsController stilts = vehicle.GetComponentInChildren<StiltsController>(true);
         if (stilts != null)
-            return VehicleSetup.WithFrame(name, TransformPaths.RelativePath(stilts.root.transform, vehicle), StiltPaths(vehicle, stilts));
+            return VehicleSetup.WithRecordedFrame(name, TransformPaths.RelativePath(stilts.root.transform, vehicle), StiltPaths(vehicle, stilts));
 
         Transform physicsRig = FindPhysicsRig(vehicle);
         if (physicsRig != null)
-            return new VehicleSetup(name, physicsRig);
+            return VehicleSetup.WithPhysicsRig(name, physicsRig);
 
-        if (TransformPaths.Find(vehicle, RiderName) != null)
-            return VehicleSetup.WithRider(name, RiderName);
+        Transform rider = TransformPaths.Find(vehicle, RiderPose.RiderName);
+        if (rider != null)
+            return VehicleSetup.WithRig(name, rider);
 
         TransferVelocityToAnimationProperty velocityAnimation = vehicle.GetComponentInChildren<TransferVelocityToAnimationProperty>(true);
         if (velocityAnimation != null && velocityAnimation.animator != null)
-            return new VehicleSetup(name, velocityAnimation.animator);
+            return VehicleSetup.WithRig(name, velocityAnimation.animator.transform);
 
-        return new VehicleSetup(name);
+        return VehicleSetup.ShapeOnly(name);
     }
 
     private static string[] StiltPaths(Transform vehicle, StiltsController controller)

@@ -19,7 +19,7 @@ public class GhostRecorder
         this.body = body;
         this.parts = parts;
         this.goalObjects = goalObjects;
-        Recording = new PartRecording(setup.VehicleName, setup.FramePath, setup.PartsRotateOnly, setup.PartPaths, GoalObjects.Names(goalObjects));
+        Recording = new PartRecording(setup, GoalObjects.Names(goalObjects));
     }
 
     public void Update()

@@ -1,12 +1,6 @@
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using Il2Cpp;
 using Il2CppSpeed.GhostCar;
 using UnityEngine;
-using UnityEngine.Rendering;
-using Object = UnityEngine.Object;
-using TransformList = Il2CppSystem.Collections.Generic.List<UnityEngine.Transform>;
 
 namespace BetterGhosts;
 
@@ -15,112 +9,49 @@ public class ShapedGhost
     private const string GenericModelName = "GhostCarModel";
     private const string GenericBodyName = "Body";
 
+    private readonly GameObject genericModel;
     private readonly GameObject root;
     private readonly GhostPalette palette;
-    private readonly GameObject genericModel;
-    private readonly Transform[] partPivots;
-    private readonly List<Transform> anchorSources = new();
-    private readonly List<Transform> anchorPivots = new();
-    private readonly List<SpinningPart> spinners = new();
-    private readonly PartRecording recording;
-    private readonly List<InferredWheel> inferredWheels = new();
+    private readonly GhostSamples samples;
+    private readonly ShapeCopier shape;
     private readonly CopiedRig rig;
-    private readonly GameObject physicsContainer;
-    private readonly PowerEffects power = new();
-    private AnimatorDriver animatorDriver;
-    private Animator drivenAnimator;
-    private readonly UmbrellaAnimation umbrella;
-    private readonly RiderPose riderPose;
-    private readonly HamsterWheel hamsterWheel;
-    private readonly List<SteeredPart> steeredParts = new();
-    private readonly List<LeaningPart> leaningParts = new();
-    private HotWheels hotWheels;
-    private readonly SwingingPivot swingingPivot;
-    private readonly List<float> bodyTimes = new();
-    private readonly List<Vector3> bodyPositions = new();
-    private readonly List<Quaternion> bodyRotations = new();
-    private readonly List<Vector3> bodyVelocities = new();
-    private readonly List<bool> bodyGrounded = new();
-    private readonly List<float> bodySkids = new();
-    private readonly List<float> bodyInputs = new();
-    private readonly List<bool> actionPressed = new();
-    private readonly SampleCursor bodyCursor;
-    private readonly List<Mesh> bakedMeshes = new();
-    private readonly List<GoalObjectGhost> goalObjectGhosts = new();
+    private readonly List<IGhostMotion> motions = new();
 
     public ShapedGhost(GhostCarManager manager, Transform vehicle, Transform body, Transform[] parts, Transform[] goalObjects, VehicleSetup setup, PartRecording recording)
     {
         Transform modelTransform = TransformPaths.FindDescendant(manager.ghostTransform, GenericModelName);
         Renderer ghostRenderer = TransformPaths.FindDescendant(modelTransform, GenericBodyName).GetComponent<Renderer>();
-        palette = new GhostPalette(ghostRenderer);
         int layer = ghostRenderer.gameObject.layer;
+        palette = new GhostPalette(ghostRenderer);
+        samples = new GhostSamples(manager.existingGhostData);
 
-        CacheSamples(manager.existingGhostData);
-        bodyCursor = new SampleCursor(bodyTimes);
-        if (recording != null && recording.SampleCount == bodyTimes.Count)
-            this.recording = recording;
-
-        root = new("BetterGhost");
+        root = new GameObject("BetterGhost");
         root.layer = layer;
         root.transform.SetParent(modelTransform.parent, false);
         root.transform.localScale = body.lossyScale;
+        root.transform.SetPositionAndRotation(samples.Positions[0], samples.Rotations[0]);
 
-        partPivots = new Transform[parts.Length];
-        for (int i = 0; i < parts.Length; i++)
+        GhostPivots pivots = new GhostPivots(root.transform, body, layer);
+        GhostBuild build = new GhostBuild(vehicle, body, root.transform, setup, samples, pivots);
+        PowerEffects power = new PowerEffects();
+
+        RecordedParts recordedParts = RecordedParts.Create(build, parts, recording);
+        if (recordedParts != null)
+            motions.Add(recordedParts);
+        motions.AddRange(GhostMotions.Find(build));
+
+        shape = new ShapeCopier(palette, pivots, power);
+        shape.Copy(build);
+
+        if (setup.RigRoot != null)
         {
-            partPivots[i] = CreatePivot(parts[i], body, root.transform, layer);
-            anchorSources.Add(parts[i]);
-            anchorPivots.Add(partPivots[i]);
+            rig = new CopiedRig(setup.RigRoot, setup.RigKeepsPhysics, pivots, palette, power);
+            build.UseRig(rig);
+            motions.AddRange(GhostMotions.Find(build));
         }
 
-        Transform rider = setup.RiderPath != null ? TransformPaths.Find(vehicle, setup.RiderPath) : null;
-        Transform rigRoot = setup.RigRoot != null ? setup.RigRoot : rider;
-        Transform rigParent = root.transform;
-        if (rider != null)
-        {
-            rigParent = CreatePivot(rider, body, root.transform, layer);
-            riderPose = new RiderPose(rigParent, rider, body);
-        }
-
-        if (parts.Length == 0)
-            CreateInferredWheels(vehicle, body, rigRoot, layer);
-
-        CreateSpinnerPivots(vehicle, body, rigRoot, layer);
-        hamsterWheel = CreateHamsterWheel(vehicle, body, layer);
-        CreateDrivenParts(vehicle, rigRoot, source => CreateAnchoredPivot(source, body, layer), false);
-        CopyRenderers(vehicle, body, rigRoot, layer);
-        CopyPowerEffects(vehicle, body, rigRoot);
-
-        if (setup.PhysicsRig != null)
-        {
-            physicsContainer = new("BetterGhostPhysics");
-            physicsContainer.layer = layer;
-            root.transform.SetPositionAndRotation(bodyPositions[0], bodyRotations[0]);
-        }
-
-        if (rigRoot != null)
-        {
-            Transform rigAnchor = rider;
-            if (rider == null)
-                FindPlacement(rigRoot, body, out rigAnchor, out rigParent);
-            rig = new(rigRoot, rigAnchor, rigParent, palette, power, physicsContainer != null ? physicsContainer.transform : null);
-        }
-        if (rigRoot != null)
-        {
-            SetUpAnimator(vehicle, rigRoot, setup.LegAnimator);
-            umbrella = UmbrellaAnimation.Find(vehicle, rigRoot, rig);
-            FindRigSpinners(vehicle, rigRoot);
-            CreateDrivenParts(vehicle, rigRoot, rig.CopyOf, true);
-        }
-
-        if (setup.SwingingContainer != null)
-            swingingPivot = new SwingingPivot(rig.Root, setup.SwingingContainer, rig.Animator, bodyTimes, bodyPositions, bodyRotations, bodyVelocities);
-
-        if (this.recording != null && this.recording.GoalObjectNames.SequenceEqual(GoalObjects.Names(goalObjects)))
-        {
-            foreach (Transform goalObject in goalObjects)
-                goalObjectGhosts.Add(new GoalObjectGhost(goalObject, palette, layer));
-        }
+        motions.AddRange(GoalObjectGhost.CreateAll(build, goalObjects, recording, palette));
+        motions.Add(power);
 
         genericModel = modelTransform.gameObject;
         genericModel.SetActive(false);
@@ -128,43 +59,11 @@ public class ShapedGhost
 
     public void Update(float time, float deltaTime)
     {
-        bodyCursor.Seek(time, out int from, out int to, out float blend);
-        if (recording != null && recording.HasFrame)
-        {
-            root.transform.position = Vector3.Lerp(recording.FramePositions[from], recording.FramePositions[to], blend);
-            root.transform.rotation = Quaternion.Slerp(recording.FrameRotations[from], recording.FrameRotations[to], blend);
-        }
-        else
-        {
-            root.transform.position = Vector3.Lerp(bodyPositions[from], bodyPositions[to], blend);
-            root.transform.rotation = Quaternion.Slerp(bodyRotations[from], bodyRotations[to], blend);
-        }
-        swingingPivot?.Update(root.transform, from, to, blend);
-
-        if (physicsContainer != null)
-            MatchPhysicsVisibility();
-
-        if (recording != null)
-            UpdateParts(from, to, blend);
-        UpdateGoalObjects(from, to, blend);
-
-        Vector3 velocity = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend);
-        float speed = velocity.magnitude;
-        riderPose?.Update(root.transform.position, velocity, deltaTime);
-        foreach (SpinningPart spinner in spinners)
-            spinner.Update(deltaTime, speed);
-        hamsterWheel?.Update(velocity, root.transform.forward, deltaTime);
-        foreach (InferredWheel wheel in inferredWheels)
-            wheel.Update(time, deltaTime, speed);
-
-        bool pressed = blend < 0.5f ? actionPressed[from] : actionPressed[to];
-        umbrella?.Update(pressed, deltaTime);
-        UpdateDrivenParts(from, to, blend, velocity, pressed, deltaTime);
-
-        if (rig != null)
-            UpdateRig(from, to, blend, deltaTime);
-
-        power.SetActive(pressed);
+        GhostFrame frame = samples.At(time, deltaTime);
+        root.transform.SetPositionAndRotation(frame.Position, frame.Rotation);
+        foreach (IGhostMotion motion in motions)
+            motion.Update(frame);
+        rig?.Update(root.activeInHierarchy);
     }
 
     public void Destroy()
@@ -173,328 +72,9 @@ public class ShapedGhost
             genericModel.SetActive(true);
         if (root != null)
             Object.Destroy(root);
-        if (physicsContainer != null)
-            Object.Destroy(physicsContainer);
-
-        foreach (GoalObjectGhost goalObjectGhost in goalObjectGhosts)
-            goalObjectGhost.Destroy();
 
         rig?.Destroy();
+        shape.Destroy();
         palette.Destroy();
-        foreach (Mesh mesh in bakedMeshes)
-            Object.Destroy(mesh);
-    }
-
-    private void MatchPhysicsVisibility()
-    {
-        bool visible = root.activeInHierarchy;
-        if (physicsContainer.activeSelf != visible)
-            physicsContainer.SetActive(visible);
-    }
-
-    private void UpdateParts(int from, int to, float blend)
-    {
-        for (int i = 0; i < partPivots.Length; i++)
-        {
-            if (!recording.PartsRotateOnly)
-                partPivots[i].localPosition = Vector3.Lerp(recording.Positions[from][i], recording.Positions[to][i], blend);
-            partPivots[i].localRotation = Quaternion.Slerp(recording.Rotations[from][i], recording.Rotations[to][i], blend);
-        }
-    }
-
-    private void UpdateGoalObjects(int from, int to, float blend)
-    {
-        bool visible = root.activeInHierarchy;
-        for (int i = 0; i < goalObjectGhosts.Count; i++)
-            goalObjectGhosts[i].Update(Vector3.Lerp(recording.GoalPositions[from][i], recording.GoalPositions[to][i], blend), visible);
-    }
-
-    private void CreateInferredWheels(Transform vehicle, Transform body, Transform rigRoot, int layer)
-    {
-        foreach (Transform wheel in InputWheels.Find(vehicle, rigRoot))
-        {
-            Transform pivot = CreatePivot(wheel, body, root.transform, layer);
-            anchorSources.Add(wheel);
-            anchorPivots.Add(pivot);
-            inferredWheels.Add(new InferredWheel(pivot, wheel, body));
-        }
-    }
-
-    private void UpdateRig(int from, int to, float blend, float deltaTime)
-    {
-        if (animatorDriver != null)
-            UpdateAnimator(from, to, blend, deltaTime);
-        rig.BakeSkins();
-    }
-
-    private void UpdateAnimator(int from, int to, float blend, float deltaTime)
-    {
-        GhostMotion motion = new GhostMotion
-        {
-            Position = root.transform.position,
-            Rotation = root.transform.rotation,
-            Velocity = Vector3.Lerp(bodyVelocities[from], bodyVelocities[to], blend),
-            IsGrounded = blend < 0.5f ? bodyGrounded[from] : bodyGrounded[to],
-            Skid = Mathf.Lerp(bodySkids[from], bodySkids[to], blend),
-            Steering = Mathf.Lerp(bodyInputs[from], bodyInputs[to], blend),
-            ActionPressed = blend < 0.5f ? actionPressed[from] : actionPressed[to],
-        };
-        animatorDriver.Drive(drivenAnimator, motion, deltaTime);
-    }
-
-    private void CacheSamples(GhostCarData data)
-    {
-        var samples = data.ghostData;
-        for (int i = 0; i < samples.Count; i++)
-        {
-            GhostCarInstantSaveData sample = samples[i];
-            bodyTimes.Add(sample.time);
-            bodyPositions.Add(sample.position);
-            bodyRotations.Add(sample.rotation);
-            bodyVelocities.Add(sample.velocity);
-            bodyGrounded.Add(sample.isGrounded);
-            bodySkids.Add(sample.skid);
-            bodyInputs.Add(sample.input);
-            actionPressed.Add(sample.actionPressed);
-        }
-    }
-
-    private static Transform CreatePivot(Transform source, Transform anchor, Transform parent, int layer)
-    {
-        Transform pivot = new GameObject(source.name).transform;
-        pivot.gameObject.layer = layer;
-        pivot.SetParent(parent, false);
-        RelativePose.Copy(pivot, source, anchor);
-        return pivot;
-    }
-
-    private void CreateDrivenParts(Transform vehicle, Transform rigRoot, Func<Transform, Transform> pivotFor, bool inRig)
-    {
-        var leaners = vehicle.GetComponentsInChildren<LeanWithSkid>(false);
-        for (int i = 0; i < leaners.Length; i++)
-        {
-            Transform pivot = DrivenPivot(leaners[i].transform, rigRoot, pivotFor, inRig);
-            if (pivot != null)
-                leaningParts.Add(new LeaningPart(pivot, leaners[i]));
-        }
-
-        var steerers = vehicle.GetComponentsInChildren<RotateWithInput>(false);
-        for (int i = 0; i < steerers.Length; i++)
-        {
-            Transform pivot = DrivenPivot(steerers[i].transform, rigRoot, pivotFor, inRig);
-            if (pivot != null)
-                steeredParts.Add(new SteeredPart(pivot, steerers[i]));
-        }
-
-        HotWheelsController controller = vehicle.GetComponentInChildren<HotWheelsController>(true);
-        if (controller == null)
-            return;
-
-        hotWheels ??= new HotWheels(controller);
-        AddHotWheels(controller.wheelSpinHandlesFront, controller.wheelRadiusFront, rigRoot, pivotFor, inRig);
-        AddHotWheels(controller.wheelSpinHandlesBack, controller.wheelRadiusBack, rigRoot, pivotFor, inRig);
-    }
-
-    private void AddHotWheels(TransformList handles, float radius, Transform rigRoot, Func<Transform, Transform> pivotFor, bool inRig)
-    {
-        if (handles == null)
-            return;
-
-        for (int i = 0; i < handles.Count; i++)
-        {
-            Transform pivot = handles[i] != null ? DrivenPivot(handles[i], rigRoot, pivotFor, inRig) : null;
-            if (pivot != null)
-                hotWheels.Add(pivot, radius);
-        }
-    }
-
-    private static Transform DrivenPivot(Transform source, Transform rigRoot, Func<Transform, Transform> pivotFor, bool inRig)
-    {
-        bool sourceInRig = rigRoot != null && source.IsChildOf(rigRoot);
-        return sourceInRig == inRig ? pivotFor(source) : null;
-    }
-
-    private Transform CreateAnchoredPivot(Transform source, Transform body, int layer)
-    {
-        FindPlacement(source, body, out Transform anchor, out Transform parent);
-        Transform pivot = CreatePivot(source, anchor, parent, layer);
-        anchorSources.Add(source);
-        anchorPivots.Add(pivot);
-        return pivot;
-    }
-
-    private void UpdateDrivenParts(int from, int to, float blend, Vector3 velocity, bool pressed, float deltaTime)
-    {
-        float steering = Mathf.Lerp(bodyInputs[from], bodyInputs[to], blend);
-        float skid = Mathf.Lerp(bodySkids[from], bodySkids[to], blend);
-        bool grounded = blend < 0.5f ? bodyGrounded[from] : bodyGrounded[to];
-        foreach (SteeredPart part in steeredParts)
-            part.Update(steering, deltaTime);
-        foreach (LeaningPart part in leaningParts)
-            part.Update(skid, steering, grounded, deltaTime);
-        hotWheels?.Update(velocity, root.transform.forward, pressed, deltaTime);
-    }
-
-    private HamsterWheel CreateHamsterWheel(Transform vehicle, Transform body, int layer)
-    {
-        HamsterWheelController controller = HamsterWheel.Find(vehicle);
-        if (controller == null)
-            return null;
-
-        Transform source = controller.wheelRotateHandle;
-        FindPlacement(source, body, out Transform anchor, out Transform parent);
-        Transform pivot = CreatePivot(source, anchor, parent, layer);
-        anchorSources.Add(source);
-        anchorPivots.Add(pivot);
-        return new HamsterWheel(pivot, controller);
-    }
-
-    private void CreateSpinnerPivots(Transform vehicle, Transform body, Transform rigRoot, int layer)
-    {
-        var rotators = vehicle.GetComponentsInChildren<RotateAroundAxis>(true);
-        for (int i = 0; i < rotators.Length; i++)
-        {
-            Transform source = rotators[i].transform;
-            if (!SpinningPart.Spins(rotators[i]) || (rigRoot != null && source.IsChildOf(rigRoot)))
-                continue;
-
-            FindPlacement(source, body, out Transform anchor, out Transform parent);
-            Transform pivot = CreatePivot(source, anchor, parent, layer);
-            anchorSources.Add(source);
-            anchorPivots.Add(pivot);
-            spinners.Add(new SpinningPart(pivot, rotators[i]));
-        }
-    }
-
-    private void FindRigSpinners(Transform vehicle, Transform rigRoot)
-    {
-        var rotators = vehicle.GetComponentsInChildren<RotateAroundAxis>(true);
-        for (int i = 0; i < rotators.Length; i++)
-        {
-            Transform source = rotators[i].transform;
-            if (!SpinningPart.Spins(rotators[i]) || !source.IsChildOf(rigRoot))
-                continue;
-
-            Transform copy = rig.CopyOf(source);
-            if (copy != null)
-                spinners.Add(new SpinningPart(copy, rotators[i]));
-        }
-    }
-
-    private void SetUpAnimator(Transform vehicle, Transform rigRoot, Animator legAnimator)
-    {
-        Animator source = legAnimator != null ? legAnimator : rigRoot.GetComponentInChildren<Animator>(true);
-        if (source == null)
-            return;
-
-        Transform copy = rig.CopyOf(source.transform);
-        if (copy == null)
-            return;
-
-        drivenAnimator = copy.GetComponent<Animator>();
-        animatorDriver = new AnimatorDriver(vehicle, source);
-    }
-
-    private void CopyRenderers(Transform vehicle, Transform body, Transform rigRoot, int layer)
-    {
-        var renderers = vehicle.GetComponentsInChildren<Renderer>(false);
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            Renderer renderer = renderers[i];
-            if (!renderer.enabled || renderer.shadowCastingMode == ShadowCastingMode.ShadowsOnly || renderer.GetComponent<Billboard>() != null)
-                continue;
-            if (rigRoot != null && renderer.transform.IsChildOf(rigRoot))
-                continue;
-            if (renderer.GetComponentInParent<Fire>(true) != null)
-                continue;
-
-            FindPlacement(renderer.transform, body, out Transform anchor, out Transform parent);
-
-            SkinnedMeshRenderer skinned = renderer.TryCast<SkinnedMeshRenderer>();
-            if (skinned != null)
-            {
-                CopyRenderer(renderer, Bake(skinned), null, anchor, parent, layer);
-                continue;
-            }
-
-            if (renderer.TryCast<MeshRenderer>() == null)
-                continue;
-            MeshFilter filter = renderer.GetComponent<MeshFilter>();
-            if (filter == null || filter.sharedMesh == null)
-                continue;
-
-            Mesh mesh = filter.sharedMesh;
-            CopyRenderer(renderer, mesh, palette.SlotStream(mesh.vertexCount), anchor, parent, layer);
-        }
-    }
-
-    private void CopyPowerEffects(Transform vehicle, Transform body, Transform rigRoot)
-    {
-        var fires = vehicle.GetComponentsInChildren<Fire>(true);
-        for (int i = 0; i < fires.Length; i++)
-        {
-            if (!fires[i].gameObject.activeInHierarchy)
-                continue;
-            if (rigRoot != null && fires[i].transform.IsChildOf(rigRoot))
-                continue;
-
-            FindPlacement(fires[i].transform, body, out Transform anchor, out Transform parent);
-            power.AddDetachedFire(fires[i], anchor, parent);
-        }
-
-        var blocks = vehicle.GetComponentsInChildren<JetpackBuildingBlock>(true);
-        for (int i = 0; i < blocks.Length; i++)
-        {
-            if (!blocks[i].gameObject.activeInHierarchy)
-                continue;
-            if (rigRoot != null && blocks[i].transform.IsChildOf(rigRoot))
-                continue;
-
-            FindPlacement(blocks[i].transform, body, out Transform anchor, out Transform parent);
-            power.AddDetachedBlock(blocks[i], anchor, parent);
-        }
-    }
-
-    private void FindPlacement(Transform source, Transform body, out Transform anchor, out Transform parent)
-    {
-        int anchorIndex = FindAnchor(source, body);
-        anchor = anchorIndex >= 0 ? anchorSources[anchorIndex] : body;
-        parent = anchorIndex >= 0 ? anchorPivots[anchorIndex] : root.transform;
-    }
-
-    private Mesh Bake(SkinnedMeshRenderer skinned)
-    {
-        Mesh baked = new Mesh();
-        skinned.BakeMesh(baked);
-        baked.SetUVs(GhostPalette.SlotChannel, palette.Slots(baked.vertexCount));
-        bakedMeshes.Add(baked);
-        return baked;
-    }
-
-    private int FindAnchor(Transform transform, Transform body)
-    {
-        for (Transform t = transform; t != null && t != body; t = t.parent)
-        {
-            for (int i = 0; i < anchorSources.Count; i++)
-            {
-                if (anchorSources[i] == t)
-                    return i;
-            }
-        }
-        return -1;
-    }
-
-    private void CopyRenderer(Renderer source, Mesh mesh, Mesh paletteSlotStream, Transform anchor, Transform parent, int layer)
-    {
-        GameObject copy = new GameObject(source.gameObject.name);
-        copy.layer = layer;
-        copy.transform.SetParent(parent, false);
-        RelativePose.Copy(copy.transform, source.transform, anchor);
-
-        copy.AddComponent<MeshFilter>().sharedMesh = mesh;
-        MeshRenderer renderer = copy.AddComponent<MeshRenderer>();
-        if (paletteSlotStream != null)
-            renderer.additionalVertexStreams = paletteSlotStream;
-        palette.Paint(renderer, mesh.subMeshCount);
     }
 }
