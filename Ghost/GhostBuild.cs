@@ -10,8 +10,9 @@ public class GhostBuild
     public readonly VehicleSetup Setup;
     public readonly GhostSamples Samples;
     public readonly GhostPivots Pivots;
+    public readonly GhostPalette Palette;
 
-    public GhostBuild(Transform vehicle, Transform body, Transform root, VehicleSetup setup, GhostSamples samples, GhostPivots pivots)
+    public GhostBuild(Transform vehicle, Transform body, Transform root, VehicleSetup setup, GhostSamples samples, GhostPivots pivots, GhostPalette palette)
     {
         Vehicle = vehicle;
         Body = body;
@@ -19,6 +20,7 @@ public class GhostBuild
         Setup = setup;
         Samples = samples;
         Pivots = pivots;
+        Palette = palette;
     }
 
     public CopiedRig Rig { get; private set; }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Il2Cpp;
+using Il2CppSpeed.Level;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -75,6 +76,10 @@ public class ShapeCopier
             if (blocks[i].gameObject.activeInHierarchy && !build.IsInRig(blocks[i].transform))
                 power.AddDetachedBlock(blocks[i], pivots);
         }
+
+        WaterCoolerController cooler = build.Vehicle.GetComponentInChildren<WaterCoolerController>(true);
+        if (cooler != null)
+            power.AddDetachedStreams(cooler, pivots, build.IsInRig);
     }
 
     private Mesh Bake(SkinnedMeshRenderer skinned)

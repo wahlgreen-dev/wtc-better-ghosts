@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Il2Cpp;
+using Il2CppSpeed.Level;
 using UnityEngine;
 using ParticleSystemList = Il2CppSystem.Collections.Generic.List<UnityEngine.ParticleSystem>;
 
@@ -18,6 +19,8 @@ public class PowerEffects : IGhostMotion
     private readonly List<DrivenFire> fires = new();
     private readonly List<ParticleSystem> smoke = new();
     private readonly List<ParticleSystem> bursts = new();
+    private readonly List<ParticleSystem> streams = new();
+    private float streamRate;
     private readonly List<Transform> keptRoots = new();
     private bool active;
 
@@ -54,6 +57,8 @@ public class PowerEffects : IGhostMotion
             AddAll(blocks[i].burstRing, bursts);
         }
 
+        AddStreamsFromCopy(copy, source);
+
         foreach (ParticleSystem system in smoke)
             keptRoots.Add(system.transform);
         foreach (ParticleSystem system in bursts)
@@ -65,6 +70,18 @@ public class PowerEffects : IGhostMotion
         GameObject copy = CopyDetached(source.gameObject, pivots);
         if (!source.startOn)
             fires.Add(new DrivenFire { Fire = copy.GetComponent<Fire>(), ContainerScale = source.containerScale });
+    }
+
+    public void AddDetachedStreams(WaterCoolerController controller, GhostPivots pivots, System.Func<Transform, bool> isInRig)
+    {
+        for (int i = 0; i < controller.particlesInterface.Count; i++)
+        {
+            ParticleSystem source = controller.particlesInterface[i].particles;
+            if (source == null || !source.gameObject.activeInHierarchy || isInRig(source.transform))
+                continue;
+
+            AddStream(CopyDetached(source.gameObject, pivots).GetComponent<ParticleSystem>(), controller.particlesEmission);
+        }
     }
 
     public void AddDetachedBlock(JetpackBuildingBlock block, GhostPivots pivots)
@@ -85,6 +102,40 @@ public class PowerEffects : IGhostMotion
 
             target.Add(CopyDetached(source.gameObject, pivots).GetComponent<ParticleSystem>());
         }
+    }
+
+    private void AddStreamsFromCopy(GameObject copy, GameObject source)
+    {
+        WaterCoolerController controller = source.transform.root.GetComponentInChildren<WaterCoolerController>(true);
+        if (controller == null)
+            return;
+
+        for (int i = 0; i < controller.particlesInterface.Count; i++)
+        {
+            ParticleSystem stream = controller.particlesInterface[i].particles;
+            if (stream == null || !stream.gameObject.activeInHierarchy || !stream.transform.IsChildOf(source.transform))
+                continue;
+
+            Transform copied = TransformPaths.Find(copy.transform, TransformPaths.RelativePath(stream.transform, source.transform));
+            if (copied == null)
+                continue;
+
+            keptRoots.Add(copied);
+            AddStream(copied.GetComponent<ParticleSystem>(), controller.particlesEmission);
+        }
+    }
+
+    private void AddStream(ParticleSystem stream, float rate)
+    {
+        streams.Add(stream);
+        streamRate = rate;
+        SetEmission(stream, 0f);
+    }
+
+    private static void SetEmission(ParticleSystem system, float rate)
+    {
+        ParticleSystem.EmissionModule emission = system.emission;
+        emission.rateOverTime = new ParticleSystem.MinMaxCurve(rate);
     }
 
     private static GameObject CopyDetached(GameObject source, GhostPivots pivots)
@@ -132,6 +183,8 @@ public class PowerEffects : IGhostMotion
             system.gameObject.SetActive(true);
             system.Play();
         }
+        foreach (ParticleSystem system in streams)
+            SetEmission(system, streamRate);
     }
 
     private void StopBoosting()
@@ -140,6 +193,8 @@ public class PowerEffects : IGhostMotion
             driven.Fire.TurnOff();
         foreach (ParticleSystem system in smoke)
             system.Stop();
+        foreach (ParticleSystem system in streams)
+            SetEmission(system, 0f);
     }
 
     private static void AddAll(ParticleSystemList source, List<ParticleSystem> target)

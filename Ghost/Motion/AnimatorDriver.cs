@@ -41,6 +41,8 @@ public class AnimatorDriver : IGhostMotion
     private readonly int horizontalHash;
     private readonly int pedalHash;
     private readonly float maxPedalSpeed;
+    private readonly int finSpeedHash;
+    private readonly float actionFinSpeed;
     private readonly float pumpInterval;
     private float pumpCooldown;
     private float groundClearance;
@@ -109,6 +111,13 @@ public class AnimatorDriver : IGhostMotion
             maxPedalSpeed = bike.maxPedalAnimationSpeed;
         }
 
+        CarpController carp = vehicle.GetComponentInChildren<CarpController>(true);
+        if (carp != null && carp.finAnim == sourceAnimator)
+        {
+            finSpeedHash = Animator.StringToHash(carp.finAnimSpeed);
+            actionFinSpeed = carp.actionFinSpeedFactor;
+        }
+
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
         if (legs == null || legs.animator != sourceAnimator)
             return;
@@ -153,6 +162,9 @@ public class AnimatorDriver : IGhostMotion
 
         if (pedalHash != 0)
             animator.SetFloat(pedalHash, frame.IsGrounded ? Mathf.Min(frame.Velocity.magnitude, maxPedalSpeed) : 0f);
+
+        if (finSpeedHash != 0)
+            animator.SetFloat(finSpeedHash, frame.ActionPressed ? actionFinSpeed : 1f);
 
         if (pumpHash != 0)
             DrivePump(frame);

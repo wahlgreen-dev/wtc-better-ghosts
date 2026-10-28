@@ -43,6 +43,10 @@ public static class VehicleSetups
         if (rider != null)
             return VehicleSetup.WithRig(name, rider);
 
+        CarpController carp = vehicle.GetComponentInChildren<CarpController>(true);
+        if (carp != null && carp.finAnim != null)
+            return VehicleSetup.WithRig(name, carp.finAnim.transform);
+
         TransferVelocityToAnimationProperty velocityAnimation = vehicle.GetComponentInChildren<TransferVelocityToAnimationProperty>(true);
         if (velocityAnimation != null && velocityAnimation.animator != null)
             return VehicleSetup.WithRig(name, velocityAnimation.animator.transform);

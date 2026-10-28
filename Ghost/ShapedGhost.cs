@@ -32,7 +32,7 @@ public class ShapedGhost
         root.transform.SetPositionAndRotation(samples.Positions[0], samples.Rotations[0]);
 
         GhostPivots pivots = new GhostPivots(root.transform, body, layer);
-        GhostBuild build = new GhostBuild(vehicle, body, root.transform, setup, samples, pivots);
+        GhostBuild build = new GhostBuild(vehicle, body, root.transform, setup, samples, pivots, palette);
         PowerEffects power = new PowerEffects();
 
         RecordedParts recordedParts = RecordedParts.Create(build, parts, recording);
