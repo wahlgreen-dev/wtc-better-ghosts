@@ -17,6 +17,7 @@ public static class GhostMotions
         RetractingSpikes.Find(build, motions);
         HeldObjects.Find(build, motions);
         AnimatorDriver.Find(build, motions);
+        LegKick.Find(build, motions);
         UmbrellaAnimation.Find(build, motions);
         WingFlaps.Find(build, motions);
         PorcarpineBall.Find(build, motions);
@@ -25,6 +26,8 @@ public static class GhostMotions
         RiderPose.Find(build, motions);
         KiteFlight.Find(build, motions);
         StretchedLine.Find(build, motions);
+        PrinterPaper.Find(build, motions);
+        BoostStreams.Find(build, motions);
         return motions;
     }
 }

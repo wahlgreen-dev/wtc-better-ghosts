@@ -56,6 +56,10 @@ public static class VehicleSetups
         if (carp != null && carp.finAnim != null)
             return VehicleSetup.WithRig(name, carp.finAnim.transform);
 
+        OneLegKick kick = vehicle.GetComponentInChildren<OneLegKick>(true);
+        if (kick != null && kick.animator != null)
+            return VehicleSetup.WithRig(name, kick.animator.transform);
+
         TransferVelocityToAnimationProperty velocityAnimation = vehicle.GetComponentInChildren<TransferVelocityToAnimationProperty>(true);
         if (velocityAnimation != null && velocityAnimation.animator != null)
             return VehicleSetup.WithRig(name, velocityAnimation.animator.transform);
