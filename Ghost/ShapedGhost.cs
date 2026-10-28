@@ -8,6 +8,7 @@ public class ShapedGhost
 {
     private const string GenericModelName = "GhostCarModel";
     private const string GenericBodyName = "Body";
+    private const string GenericFlameName = "3DFire GhostCarVariant Variant (1)";
 
     private readonly GameObject genericModel;
     private readonly GameObject root;
@@ -33,7 +34,8 @@ public class ShapedGhost
 
         GhostPivots pivots = new GhostPivots(root.transform, body, layer);
         GhostBuild build = new GhostBuild(vehicle, body, root.transform, setup, samples, pivots, palette);
-        PowerEffects power = new PowerEffects();
+        Transform flameTemplate = TransformPaths.FindDescendant(modelTransform, GenericFlameName);
+        PowerEffects power = new PowerEffects(flameTemplate);
 
         RecordedParts recordedParts = RecordedParts.Create(build, parts, recording);
         if (recordedParts != null)

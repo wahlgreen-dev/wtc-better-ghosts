@@ -1,28 +1,22 @@
 using System.Collections.Generic;
 using Il2Cpp;
-using Il2CppSpeed.Level;
 using UnityEngine;
-using ParticleSystemList = Il2CppSystem.Collections.Generic.List<UnityEngine.ParticleSystem>;
 
 namespace BetterGhosts;
 
 public class PowerEffects : IGhostMotion
 {
-    private static readonly HashSet<string> effectComponents = new() { "Transform", "MeshFilter", "MeshRenderer", "Fire", "Billboard", "ParticleSystem", "ParticleSystemRenderer" };
+    private const float ReferenceFlameLength = 0.57f;
 
-    private class DrivenFire
-    {
-        public Fire Fire;
-        public Vector3 ContainerScale;
-    }
-
-    private readonly List<DrivenFire> fires = new();
-    private readonly List<ParticleSystem> smoke = new();
-    private readonly List<ParticleSystem> bursts = new();
-    private readonly List<ParticleSystem> streams = new();
-    private float streamRate;
+    private readonly Transform flameTemplate;
+    private readonly List<GameObject> flames = new();
     private readonly List<Transform> keptRoots = new();
     private bool active;
+
+    public PowerEffects(Transform flameTemplate)
+    {
+        this.flameTemplate = flameTemplate;
+    }
 
     public bool Keeps(Transform transform)
     {
@@ -40,116 +34,52 @@ public class PowerEffects : IGhostMotion
         var sourceFires = source.GetComponentsInChildren<Fire>(true);
         for (int i = 0; i < copyFires.Length; i++)
         {
-            keptRoots.Add(copyFires[i].transform);
-            if (!sourceFires[i].startOn && sourceFires[i].gameObject.activeInHierarchy)
-                fires.Add(new DrivenFire { Fire = copyFires[i], ContainerScale = sourceFires[i].containerScale });
+            Transform copyFire = copyFires[i].transform;
+            if (sourceFires[i].gameObject.activeInHierarchy)
+            {
+                Transform holder = new GameObject(copyFire.name).transform;
+                holder.SetParent(copyFire.parent, false);
+                holder.localPosition = copyFire.localPosition;
+                holder.localRotation = copyFire.localRotation;
+                holder.localScale = copyFire.localScale;
+                keptRoots.Add(holder);
+                AddFlame(holder, sourceFires[i]);
+            }
+            Object.DestroyImmediate(copyFire.gameObject);
         }
-
-        var blocks = copy.GetComponentsInChildren<JetpackBuildingBlock>(true);
-        var sourceBlocks = source.GetComponentsInChildren<JetpackBuildingBlock>(true);
-        for (int i = 0; i < blocks.Length; i++)
-        {
-            if (!sourceBlocks[i].gameObject.activeInHierarchy)
-                continue;
-
-            AddAll(blocks[i].smoke, smoke);
-            AddAll(blocks[i].burst, bursts);
-            AddAll(blocks[i].burstRing, bursts);
-        }
-
-        AddStreamsFromCopy(copy, source);
-
-        foreach (ParticleSystem system in smoke)
-            keptRoots.Add(system.transform);
-        foreach (ParticleSystem system in bursts)
-            keptRoots.Add(system.transform);
     }
 
     public void AddDetachedFire(Fire source, GhostPivots pivots)
     {
-        GameObject copy = CopyDetached(source.gameObject, pivots);
+        Transform holder = new GameObject(source.name).transform;
+        holder.gameObject.layer = pivots.Layer;
+        pivots.Place(holder, source.transform);
+        AddFlame(holder, source);
+    }
+
+    private void AddFlame(Transform holder, Fire source)
+    {
+        Transform flame = Object.Instantiate(flameTemplate, holder);
+        flame.name = flameTemplate.name;
+        flame.localPosition = Vector3.zero;
+        flame.localRotation = flameTemplate.localRotation;
+        flame.localScale = Divide(flameTemplate.lossyScale * (FullFlameLength(source) / ReferenceFlameLength), source.transform.lossyScale);
+        flame.gameObject.SetActive(source.startOn);
         if (!source.startOn)
-            fires.Add(new DrivenFire { Fire = copy.GetComponent<Fire>(), ContainerScale = source.containerScale });
+            flames.Add(flame.gameObject);
     }
 
-    public void AddDetachedStreams(WaterCoolerController controller, GhostPivots pivots, System.Func<Transform, bool> isInRig)
+    private static float FullFlameLength(Fire fire)
     {
-        for (int i = 0; i < controller.particlesInterface.Count; i++)
-        {
-            ParticleSystem source = controller.particlesInterface[i].particles;
-            if (source == null || !source.gameObject.activeInHierarchy || isInRig(source.transform))
-                continue;
-
-            AddStream(CopyDetached(source.gameObject, pivots).GetComponent<ParticleSystem>(), controller.particlesEmission);
-        }
+        float length = fire.transform.lossyScale.y * fire.containerScale.y;
+        for (Transform t = fire.flames.transform; t != fire.flamesContainer && t != fire.transform; t = t.parent)
+            length *= t.localScale.y;
+        return length;
     }
 
-    public void AddDetachedBlock(JetpackBuildingBlock block, GhostPivots pivots)
+    private static Vector3 Divide(Vector3 scale, Vector3 by)
     {
-        AddDetachedParticles(block.smoke, smoke, pivots);
-        AddDetachedParticles(block.burst, bursts, pivots);
-        AddDetachedParticles(block.burstRing, bursts, pivots);
-    }
-
-    private static void AddDetachedParticles(ParticleSystemList sources, List<ParticleSystem> target, GhostPivots pivots)
-    {
-        List<ParticleSystem> found = new();
-        AddAll(sources, found);
-        foreach (ParticleSystem source in found)
-        {
-            if (source.GetComponentInParent<Fire>(true) != null)
-                continue;
-
-            target.Add(CopyDetached(source.gameObject, pivots).GetComponent<ParticleSystem>());
-        }
-    }
-
-    private void AddStreamsFromCopy(GameObject copy, GameObject source)
-    {
-        WaterCoolerController controller = source.transform.root.GetComponentInChildren<WaterCoolerController>(true);
-        if (controller == null)
-            return;
-
-        for (int i = 0; i < controller.particlesInterface.Count; i++)
-        {
-            ParticleSystem stream = controller.particlesInterface[i].particles;
-            if (stream == null || !stream.gameObject.activeInHierarchy || !stream.transform.IsChildOf(source.transform))
-                continue;
-
-            Transform copied = TransformPaths.Find(copy.transform, TransformPaths.RelativePath(stream.transform, source.transform));
-            if (copied == null)
-                continue;
-
-            keptRoots.Add(copied);
-            AddStream(copied.GetComponent<ParticleSystem>(), controller.particlesEmission);
-        }
-    }
-
-    private void AddStream(ParticleSystem stream, float rate)
-    {
-        streams.Add(stream);
-        streamRate = rate;
-        SetEmission(stream, 0f);
-    }
-
-    private static void SetEmission(ParticleSystem system, float rate)
-    {
-        ParticleSystem.EmissionModule emission = system.emission;
-        emission.rateOverTime = new ParticleSystem.MinMaxCurve(rate);
-    }
-
-    private static GameObject CopyDetached(GameObject source, GhostPivots pivots)
-    {
-        GameObject holder = new GameObject("BetterGhostEffectHolder");
-        holder.SetActive(false);
-        GameObject copy = Object.Instantiate(source, holder.transform);
-        copy.name = source.name;
-
-        ComponentStripper.Strip(copy, effectComponents, transform => false);
-        ComponentStripper.SetLayer(copy.transform, pivots.Layer);
-        pivots.Place(copy.transform, source.transform);
-        Object.Destroy(holder);
-        return copy;
+        return new Vector3(scale.x / by.x, scale.y / by.y, scale.z / by.z);
     }
 
     public void Update(GhostFrame frame)
@@ -163,49 +93,7 @@ public class PowerEffects : IGhostMotion
             return;
 
         this.active = active;
-        if (active)
-            StartBoosting();
-        else
-            StopBoosting();
-    }
-
-    private void StartBoosting()
-    {
-        foreach (DrivenFire driven in fires)
-        {
-            driven.Fire.containerScale = driven.ContainerScale;
-            driven.Fire.TurnOn();
-        }
-        foreach (ParticleSystem system in smoke)
-            system.Play();
-        foreach (ParticleSystem system in bursts)
-        {
-            system.gameObject.SetActive(true);
-            system.Play();
-        }
-        foreach (ParticleSystem system in streams)
-            SetEmission(system, streamRate);
-    }
-
-    private void StopBoosting()
-    {
-        foreach (DrivenFire driven in fires)
-            driven.Fire.TurnOff();
-        foreach (ParticleSystem system in smoke)
-            system.Stop();
-        foreach (ParticleSystem system in streams)
-            SetEmission(system, 0f);
-    }
-
-    private static void AddAll(ParticleSystemList source, List<ParticleSystem> target)
-    {
-        if (source == null)
-            return;
-
-        for (int i = 0; i < source.Count; i++)
-        {
-            if (source[i] != null)
-                target.Add(source[i]);
-        }
+        foreach (GameObject flame in flames)
+            flame.SetActive(active);
     }
 }
