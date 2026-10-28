@@ -45,7 +45,7 @@ public class ShapedGhost
 
         if (setup.RigRoot != null)
         {
-            rig = new CopiedRig(setup.RigRoot, setup.RigKeepsPhysics, pivots, palette, power);
+            rig = new CopiedRig(setup.RigRoot, setup.RigKeepsPhysics, setup.RigStartsAtRest, pivots, palette, power);
             build.UseRig(rig);
             motions.AddRange(GhostMotions.Find(build));
         }

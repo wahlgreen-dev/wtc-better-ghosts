@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Il2Cpp;
+using Il2CppSpeed.Overworld;
 using UnityEngine;
 
 namespace BetterGhosts;
@@ -43,6 +44,10 @@ public static class VehicleSetups
         if (rider != null)
             return VehicleSetup.WithRig(name, rider);
 
+        Animator overworldAnimator = OverworldAnimatorOf(vehicle);
+        if (overworldAnimator != null)
+            return VehicleSetup.WithRestPoseRig(name, overworldAnimator.transform);
+
         CarOnBikeController bike = vehicle.GetComponentInChildren<CarOnBikeController>(true);
         if (bike != null && bike.animator != null)
             return VehicleSetup.WithRig(name, bike.animator.transform);
@@ -56,6 +61,12 @@ public static class VehicleSetups
             return VehicleSetup.WithRig(name, velocityAnimation.animator.transform);
 
         return VehicleSetup.ShapeOnly(name);
+    }
+
+    private static Animator OverworldAnimatorOf(Transform vehicle)
+    {
+        OverworldPlayerMovementController controller = vehicle.GetComponentInChildren<OverworldPlayerMovementController>(true);
+        return controller != null && controller.model != null ? controller.model.GetComponentInChildren<Animator>(true) : null;
     }
 
     private static string[] StiltPaths(Transform vehicle, StiltsController controller)

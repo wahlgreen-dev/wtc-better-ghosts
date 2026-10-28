@@ -25,13 +25,13 @@ public class CopiedRig
 
     public Transform Root { get; }
 
-    public CopiedRig(Transform source, bool keepPhysics, GhostPivots pivots, GhostPalette palette, PowerEffects power)
+    public CopiedRig(Transform source, bool keepPhysics, bool startsAtRest, GhostPivots pivots, GhostPalette palette, PowerEffects power)
     {
         this.power = power;
         sourceRoot = source;
         GameObject holder = new GameObject("BetterGhostRigHolder");
         holder.SetActive(false);
-        GameObject copy = Object.Instantiate(source.gameObject, holder.transform);
+        GameObject copy = startsAtRest ? InstantiateAtRest(source, holder.transform) : Object.Instantiate(source.gameObject, holder.transform);
         copy.name = source.gameObject.name;
         Root = copy.transform;
 
@@ -92,6 +92,40 @@ public class CopiedRig
             baked.Skin.BakeMesh(baked.Mesh, true);
             baked.Mesh.SetUVs(GhostPalette.SlotChannel, baked.PaletteSlots);
         }
+    }
+
+    private static GameObject InstantiateAtRest(Transform source, Transform parent)
+    {
+        var transforms = source.GetComponentsInChildren<Transform>(true);
+        Vector3[] positions = new Vector3[transforms.Length];
+        Quaternion[] rotations = new Quaternion[transforms.Length];
+        Vector3[] scales = new Vector3[transforms.Length];
+        bool[] active = new bool[transforms.Length];
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            positions[i] = transforms[i].localPosition;
+            rotations[i] = transforms[i].localRotation;
+            scales[i] = transforms[i].localScale;
+            active[i] = transforms[i].gameObject.activeSelf;
+        }
+
+        var animators = source.GetComponentsInChildren<Animator>(true);
+        for (int i = 0; i < animators.Length; i++)
+        {
+            if (animators[i].isActiveAndEnabled)
+                animators[i].WriteDefaultValues();
+        }
+
+        GameObject copy = Object.Instantiate(source.gameObject, parent);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            transforms[i].localPosition = positions[i];
+            transforms[i].localRotation = rotations[i];
+            transforms[i].localScale = scales[i];
+            if (transforms[i].gameObject.activeSelf != active[i])
+                transforms[i].gameObject.SetActive(active[i]);
+        }
+        return copy;
     }
 
     private static void PreparePhysics(GameObject copy, GameObject source, GameObject anchorObject)

@@ -11,8 +11,9 @@ public class VehicleSetup
     public readonly string FramePath;
     public readonly Transform RigRoot;
     public readonly bool RigKeepsPhysics;
+    public readonly bool RigStartsAtRest;
 
-    private VehicleSetup(string vehicleName, string[] recordedPartPaths, bool recordsRotationOnly, string framePath, Transform rigRoot, bool rigKeepsPhysics)
+    private VehicleSetup(string vehicleName, string[] recordedPartPaths, bool recordsRotationOnly, string framePath, Transform rigRoot, bool rigKeepsPhysics, bool rigStartsAtRest)
     {
         VehicleName = vehicleName;
         RecordedPartPaths = recordedPartPaths;
@@ -20,32 +21,38 @@ public class VehicleSetup
         FramePath = framePath;
         RigRoot = rigRoot;
         RigKeepsPhysics = rigKeepsPhysics;
+        RigStartsAtRest = rigStartsAtRest;
     }
 
     public bool HasFrame => FramePath.Length > 0;
 
     public static VehicleSetup ShapeOnly(string vehicleName)
     {
-        return new VehicleSetup(vehicleName, Array.Empty<string>(), false, "", null, false);
+        return new VehicleSetup(vehicleName, Array.Empty<string>(), false, "", null, false, false);
     }
 
     public static VehicleSetup WithRig(string vehicleName, Transform rigRoot)
     {
-        return new VehicleSetup(vehicleName, Array.Empty<string>(), false, "", rigRoot, false);
+        return new VehicleSetup(vehicleName, Array.Empty<string>(), false, "", rigRoot, false, false);
+    }
+
+    public static VehicleSetup WithRestPoseRig(string vehicleName, Transform rigRoot)
+    {
+        return new VehicleSetup(vehicleName, Array.Empty<string>(), false, "", rigRoot, false, true);
     }
 
     public static VehicleSetup WithPhysicsRig(string vehicleName, Transform rigRoot)
     {
-        return new VehicleSetup(vehicleName, Array.Empty<string>(), false, "", rigRoot, true);
+        return new VehicleSetup(vehicleName, Array.Empty<string>(), false, "", rigRoot, true, false);
     }
 
     public static VehicleSetup WithRecordedParts(string vehicleName, params string[] partPaths)
     {
-        return new VehicleSetup(vehicleName, partPaths, false, "", null, false);
+        return new VehicleSetup(vehicleName, partPaths, false, "", null, false, false);
     }
 
     public static VehicleSetup WithRecordedFrame(string vehicleName, string framePath, string[] rotatingPartPaths)
     {
-        return new VehicleSetup(vehicleName, rotatingPartPaths, true, framePath, null, false);
+        return new VehicleSetup(vehicleName, rotatingPartPaths, true, framePath, null, false, false);
     }
 }
