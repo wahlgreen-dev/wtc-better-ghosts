@@ -11,6 +11,7 @@ public class AnimatorDriver : IGhostMotion
     private const string PumpParamName = "Pump";
     private const string HorizontalParamName = "Horizontal";
     private const string PedalParamName = "Velocity";
+    private const float CarillaLegSpeedMultiplier = 3f;
 
     private class VelocityTransfer
     {
@@ -42,11 +43,20 @@ public class AnimatorDriver : IGhostMotion
     private readonly int pedalHash;
     private readonly float maxPedalSpeed;
     private readonly int finSpeedHash;
+    private readonly int armSpeedHash;
+    private readonly float groundArmSpeed;
+    private readonly int armJumpHoldHash;
+    private readonly int armJumpStartHash;
+    private readonly int carillaLegSpeedHash;
+    private readonly int carillaLegSpeedMultiplierHash;
+    private readonly int carillaSkidHash;
+    private readonly float groundLegSpeed;
     private readonly float actionFinSpeed;
     private readonly float pumpInterval;
     private float pumpCooldown;
     private float groundClearance;
     private bool wasGrounded = true;
+    private bool wasActionPressed;
 
     private AnimatorDriver(Transform vehicle, Animator sourceAnimator, Animator animator)
     {
@@ -118,6 +128,21 @@ public class AnimatorDriver : IGhostMotion
             actionFinSpeed = carp.actionFinSpeedFactor;
         }
 
+        CarillaController carilla = vehicle.GetComponentInChildren<CarillaController>(true);
+        if (carilla != null && carilla.animator == sourceAnimator)
+        {
+            armSpeedHash = Animator.StringToHash(carilla.armSpeedParamName);
+            armJumpHoldHash = Animator.StringToHash(CarillaController.armJumpHoldParameter);
+            armJumpStartHash = Animator.StringToHash(CarillaController.armJumpStartParameter);
+            AnimationCurve armSpeed = carilla.velocityToArmSpeed;
+            groundArmSpeed = armSpeed.Evaluate(armSpeed.keys[armSpeed.length - 1].time);
+            carillaLegSpeedHash = Animator.StringToHash(carilla.legSpeedParamName);
+            carillaLegSpeedMultiplierHash = Animator.StringToHash(carilla.legSpeedMultiplierParamName);
+            carillaSkidHash = Animator.StringToHash(carilla.skidParamName);
+            AnimationCurve legSpeed = carilla.velocityToLegSpeed;
+            groundLegSpeed = legSpeed.Evaluate(legSpeed.keys[legSpeed.length - 1].time);
+        }
+
         CarWithLegs legs = vehicle.GetComponentInChildren<CarWithLegs>(true);
         if (legs == null || legs.animator != sourceAnimator)
             return;
@@ -166,6 +191,9 @@ public class AnimatorDriver : IGhostMotion
         if (finSpeedHash != 0)
             animator.SetFloat(finSpeedHash, frame.ActionPressed ? actionFinSpeed : 1f);
 
+        if (armSpeedHash != 0)
+            DriveCarilla(frame);
+
         if (pumpHash != 0)
             DrivePump(frame);
 
@@ -178,6 +206,18 @@ public class AnimatorDriver : IGhostMotion
 
         animator.SetFloat(groundDistanceHash, GroundDistance(frame));
         animator.SetBool(isGroundedHash, frame.IsGrounded);
+    }
+
+    private void DriveCarilla(GhostFrame frame)
+    {
+        animator.SetFloat(armSpeedHash, frame.IsGrounded ? groundArmSpeed : 0f);
+        animator.SetFloat(carillaLegSpeedHash, groundLegSpeed);
+        animator.SetFloat(carillaLegSpeedMultiplierHash, CarillaLegSpeedMultiplier);
+        animator.SetFloat(carillaSkidHash, frame.Skid);
+        animator.SetBool(armJumpHoldHash, frame.ActionPressed);
+        if (frame.ActionPressed && !wasActionPressed)
+            animator.SetTrigger(armJumpStartHash);
+        wasActionPressed = frame.ActionPressed;
     }
 
     private void DrivePump(GhostFrame frame)

@@ -13,9 +13,12 @@ public static class GhostMotions
         HamsterWheel.Find(build, motions);
         LeaningPart.Find(build, motions);
         SteeredPart.Find(build, motions);
-        HotWheels.Find(build, motions);
+        SpinHandles.Find(build, motions);
+        RetractingSpikes.Find(build, motions);
         AnimatorDriver.Find(build, motions);
         UmbrellaAnimation.Find(build, motions);
+        WingFlaps.Find(build, motions);
+        PorcarpineBall.Find(build, motions);
         SwingingPivot.Find(build, motions);
         RiderPose.Find(build, motions);
         KiteFlight.Find(build, motions);

@@ -89,7 +89,7 @@ public class CopiedRig
     {
         foreach (BakedSkin baked in skins)
         {
-            baked.Skin.BakeMesh(baked.Mesh);
+            baked.Skin.BakeMesh(baked.Mesh, true);
             baked.Mesh.SetUVs(GhostPalette.SlotChannel, baked.PaletteSlots);
         }
     }

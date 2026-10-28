@@ -85,7 +85,7 @@ public class ShapeCopier
     private Mesh Bake(SkinnedMeshRenderer skinned)
     {
         Mesh baked = new Mesh();
-        skinned.BakeMesh(baked);
+        skinned.BakeMesh(baked, true);
         baked.SetUVs(GhostPalette.SlotChannel, palette.Slots(baked.vertexCount));
         bakedMeshes.Add(baked);
         return baked;

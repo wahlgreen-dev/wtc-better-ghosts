@@ -43,6 +43,10 @@ public static class VehicleSetups
         if (rider != null)
             return VehicleSetup.WithRig(name, rider);
 
+        CarOnBikeController bike = vehicle.GetComponentInChildren<CarOnBikeController>(true);
+        if (bike != null && bike.animator != null)
+            return VehicleSetup.WithRig(name, bike.animator.transform);
+
         CarpController carp = vehicle.GetComponentInChildren<CarpController>(true);
         if (carp != null && carp.finAnim != null)
             return VehicleSetup.WithRig(name, carp.finAnim.transform);
