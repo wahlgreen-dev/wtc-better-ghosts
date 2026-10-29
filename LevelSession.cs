@@ -27,11 +27,14 @@ public class LevelSession
     private bool ghostAttempted;
     private bool warmedUp;
     private bool gameplayStarted;
+    private bool showingBetterGhost;
 
     public LevelSession(MelonLogger.Instance logger)
     {
         this.logger = logger;
     }
+
+    public bool ShowBetterGhost { get; set; } = true;
 
     private static string RecordingFolder => Path.Combine(MelonEnvironment.UserDataDirectory, "BetterGhosts", "ghosts");
 
@@ -42,18 +45,18 @@ public class LevelSession
             return;
 
         this.manager = manager;
+        showingBetterGhost = ShowBetterGhost;
         StartRun();
     }
 
     public void OnGameplayStarted(GhostCarManager manager)
     {
-        if (manager == null || manager != this.manager || setup == null)
+        if (manager == null || manager != this.manager || setup == null || showingBetterGhost != ShowBetterGhost)
             OnLevelIntro(manager);
         if (setup == null)
             return;
 
-        exit?.Restore();
-        exit = null;
+        exit?.Reset();
         gameplayStarted = true;
         levelWon = false;
         if (RecordsAnything)
@@ -78,7 +81,7 @@ public class LevelSession
 
         if (!gameplayStarted)
         {
-            if (!warmedUp)
+            if (!warmedUp && showingBetterGhost)
                 WarmUp();
             return;
         }
@@ -86,11 +89,9 @@ public class LevelSession
         if (!levelWon)
             recorder?.Update();
 
-        if (ghost == null && !ghostAttempted)
+        if (ghost == null && !ghostAttempted && showingBetterGhost)
             TryCreateGhost();
 
-        if (ghost != null && exit == null)
-            exit = new GhostExit(manager);
         exit?.Update(levelTimer.time, levelWon);
 
         ghost?.Update(levelTimer.time, Time.deltaTime);
@@ -167,6 +168,7 @@ public class LevelSession
         ghostAttempted = true;
         PartRecording recording = RecordsAnything ? LoadRecording() : null;
         ghost = new ShapedGhost(manager, vehicle, body, parts, goalObjects, setup, recording);
+        exit = new GhostExit(manager);
     }
 
     private PartRecording LoadRecording()
@@ -184,7 +186,7 @@ public class LevelSession
 
     private void EndRun()
     {
-        exit?.Restore();
+        exit?.Reset();
         exit = null;
         ghost?.Destroy();
         ghost = null;

@@ -29,13 +29,15 @@ public class GhostExit
             HideTag();
     }
 
-    public void Restore()
+    public void Reset()
     {
+        finished = false;
         if (manager != null)
             manager.scaleDownOnLevelWon = scaleDownOnLevelWon;
         if (!tagHidden || tag == null)
             return;
 
+        tagHidden = false;
         tag.canvasWorldFollow.enabled = true;
         if (tag.canvasScreenBehind != null)
             tag.canvasScreenBehind.enabled = true;
