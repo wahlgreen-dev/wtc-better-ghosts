@@ -23,6 +23,7 @@ public class LevelSession
     private Transform[] goalObjects;
     private GhostRecorder recorder;
     private ShapedGhost ghost;
+    private GhostExit exit;
     private bool ghostAttempted;
     private bool warmedUp;
     private bool gameplayStarted;
@@ -51,6 +52,8 @@ public class LevelSession
         if (setup == null)
             return;
 
+        exit?.Restore();
+        exit = null;
         gameplayStarted = true;
         levelWon = false;
         if (RecordsAnything)
@@ -85,6 +88,10 @@ public class LevelSession
 
         if (ghost == null && !ghostAttempted)
             TryCreateGhost();
+
+        if (ghost != null && exit == null)
+            exit = new GhostExit(manager);
+        exit?.Update(levelTimer.time, levelWon);
 
         ghost?.Update(levelTimer.time, Time.deltaTime);
     }
@@ -177,6 +184,8 @@ public class LevelSession
 
     private void EndRun()
     {
+        exit?.Restore();
+        exit = null;
         ghost?.Destroy();
         ghost = null;
         ghostAttempted = false;
