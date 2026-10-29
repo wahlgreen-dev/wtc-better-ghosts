@@ -16,12 +16,12 @@ public class RetractingSpikes : IGhostMotion
 
     public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        var sources = build.Vehicle.GetComponentsInChildren<RetractableSpike>(false);
-        if (sources.Length == 0)
+        List<RetractableSpike> sources = build.LiveComponents<RetractableSpike>();
+        if (sources.Count == 0)
             return;
 
         RetractingSpikes retracting = new RetractingSpikes(sources[0].speed);
-        for (int i = 0; i < sources.Length; i++)
+        for (int i = 0; i < sources.Count; i++)
         {
             RetractableSpike source = sources[i];
             if (source.spike == null || source.hiddenPos == null || build.MovingPartFor(source.spike.parent) == null)

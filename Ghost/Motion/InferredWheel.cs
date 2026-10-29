@@ -39,8 +39,8 @@ public class InferredWheel : IGhostMotion
         if (build.Setup.RecordedPartPaths.Length > 0)
             return;
 
-        var wheels = build.Vehicle.GetComponentsInChildren<InputWheel>(false);
-        for (int i = 0; i < wheels.Length; i++)
+        List<InputWheel> wheels = build.LiveComponents<InputWheel>();
+        for (int i = 0; i < wheels.Count; i++)
         {
             HingeJoint hinge = wheels[i].GetComponent<HingeJoint>();
             if (hinge == null || build.IsInRig(wheels[i].transform))

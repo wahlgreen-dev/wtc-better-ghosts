@@ -29,9 +29,9 @@ public class HeldObjects : IGhostMotion
         if (build.Rig != null)
             return;
 
-        var followers = build.Vehicle.GetComponentsInChildren<FollowTransform>(false);
+        List<FollowTransform> followers = build.LiveComponents<FollowTransform>();
         var joints = build.Vehicle.GetComponentsInChildren<FixedJoint>(false);
-        for (int i = 0; i < followers.Length; i++)
+        for (int i = 0; i < followers.Count; i++)
         {
             FollowTransform follower = followers[i];
             if (follower.follow == null || !build.IsInRig(follower.follow) || build.IsInRig(follower.transform))

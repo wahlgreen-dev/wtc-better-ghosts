@@ -24,8 +24,8 @@ public class SteeredPart : IGhostMotion
 
     public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        var steerers = build.Vehicle.GetComponentsInChildren<RotateWithInput>(false);
-        for (int i = 0; i < steerers.Length; i++)
+        List<RotateWithInput> steerers = build.LiveComponents<RotateWithInput>();
+        for (int i = 0; i < steerers.Count; i++)
         {
             Transform pivot = build.MovingPartFor(steerers[i].transform);
             if (pivot != null)

@@ -23,12 +23,9 @@ public class SpinningPart : IGhostMotion
 
     public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        var rotators = build.Vehicle.GetComponentsInChildren<RotateAroundAxis>(true);
-        for (int i = 0; i < rotators.Length; i++)
+        List<RotateAroundAxis> rotators = build.LiveComponents<RotateAroundAxis>();
+        for (int i = 0; i < rotators.Count; i++)
         {
-            if (!rotators[i].enabled || !rotators[i].gameObject.activeInHierarchy)
-                continue;
-
             Transform part = build.MovingPartFor(rotators[i].transform);
             if (part != null)
                 motions.Add(new SpinningPart(part, rotators[i]));

@@ -29,8 +29,8 @@ public class PrinterPaper : IGhostMotion
         if (build.Rig != null)
             return;
 
-        var sources = build.Vehicle.GetComponentsInChildren<CarAndPrinterController>(false);
-        for (int i = 0; i < sources.Length; i++)
+        List<CarAndPrinterController> sources = build.LiveComponents<CarAndPrinterController>();
+        for (int i = 0; i < sources.Count; i++)
         {
             CarAndPrinterController source = sources[i];
             if (source.particles == null || build.IsInRig(source.particles.transform))

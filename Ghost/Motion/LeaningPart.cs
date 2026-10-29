@@ -32,8 +32,8 @@ public class LeaningPart : IGhostMotion
 
     public static void Find(GhostBuild build, List<IGhostMotion> motions)
     {
-        var leaners = build.Vehicle.GetComponentsInChildren<LeanWithSkid>(false);
-        for (int i = 0; i < leaners.Length; i++)
+        List<LeanWithSkid> leaners = build.LiveComponents<LeanWithSkid>();
+        for (int i = 0; i < leaners.Count; i++)
         {
             Transform pivot = build.MovingPartFor(leaners[i].transform);
             if (pivot != null)

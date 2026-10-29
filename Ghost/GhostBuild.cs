@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace BetterGhosts;
@@ -33,6 +34,18 @@ public class GhostBuild
     public bool IsInRig(Transform source)
     {
         return Setup.RigRoot != null && source.IsChildOf(Setup.RigRoot);
+    }
+
+    public List<T> LiveComponents<T>() where T : Behaviour
+    {
+        var found = Vehicle.GetComponentsInChildren<T>(false);
+        List<T> live = new List<T>();
+        for (int i = 0; i < found.Length; i++)
+        {
+            if (found[i].enabled)
+                live.Add(found[i]);
+        }
+        return live;
     }
 
     public Transform MovingPartFor(Transform source)

@@ -92,7 +92,8 @@
       Condition="Exists('$(GameDir)\Mods')"
       SourceFiles="$(TargetPath)"
       DestinationFolder="$(GameDir)\Mods"
-      ContinueOnError="WarnAndContinue" />
+      Retries="2"
+      RetryDelayMilliseconds="500" />
 
     <Message
       Condition="Exists('$(GameDir)\Mods')"
