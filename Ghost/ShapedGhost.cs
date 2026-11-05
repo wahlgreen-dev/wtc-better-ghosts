@@ -16,6 +16,7 @@ public class ShapedGhost
     private readonly GhostSamples samples;
     private readonly ShapeCopier shape;
     private readonly CopiedRig rig;
+    private readonly GhostTrail trail;
     private readonly List<IGhostMotion> motions = new();
 
     public ShapedGhost(GhostCarManager manager, Transform vehicle, Transform body, Transform[] parts, Transform[] goalObjects, VehicleSetup setup, PartRecording recording)
@@ -55,6 +56,7 @@ public class ShapedGhost
         motions.AddRange(GoalObjectGhost.CreateAll(build, goalObjects, recording, palette));
         motions.Add(power);
 
+        trail = new GhostTrail(manager.ghostTransform, modelTransform, root.transform);
         genericModel = modelTransform.gameObject;
         genericModel.SetActive(false);
     }
@@ -70,6 +72,7 @@ public class ShapedGhost
 
     public void Destroy()
     {
+        trail.Restore();
         if (genericModel != null)
             genericModel.SetActive(true);
         if (root != null)

@@ -6,7 +6,7 @@ namespace BetterGhosts;
 
 public class PowerEffects : IGhostMotion
 {
-    private const float ReferenceFlameLength = 0.57f;
+    private const float ReferenceFlameLength = 0.5f;
 
     private readonly Transform flameTemplate;
     private readonly List<GameObject> flames = new();
@@ -72,14 +72,14 @@ public class PowerEffects : IGhostMotion
     private static float FullFlameLength(Fire fire)
     {
         float length = fire.transform.lossyScale.y * fire.containerScale.y;
-        for (Transform t = fire.flames.transform; t != fire.flamesContainer && t != fire.transform; t = t.parent)
-            length *= t.localScale.y;
+        for (Transform transform = fire.flames.transform; transform != fire.flamesContainer && transform != fire.transform; transform = transform.parent)
+            length *= transform.localScale.y;
         return length;
     }
 
     private static Vector3 Divide(Vector3 scale, Vector3 by)
     {
-        return new Vector3(scale.x / by.x, scale.y / by.y, scale.z / by.z);
+        return new(scale.x / by.x, scale.y / by.y, scale.z / by.z);
     }
 
     public void Update(GhostFrame frame)
